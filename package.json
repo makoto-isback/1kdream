@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "ADream - Telegram Mini App Lottery",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "workspaces": [
     "apps/*"
   ],
