@@ -1,0 +1,231 @@
+.deposit {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.back-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.balance-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.balance-value {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.form-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.form-card label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #999;
+}
+
+.input {
+  width: 100%;
+  background: #000;
+  border: 1px solid #333;
+  color: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.input:focus {
+  border-color: #fff;
+  outline: none;
+}
+
+.rate-info {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+}
+
+.kyat-amount {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.wallet-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.wallet-card label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #999;
+}
+
+.address-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.address {
+  flex: 1;
+  background: #000;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  word-break: break-all;
+  color: #fff;
+}
+
+.copy-btn {
+  background: #fff;
+  color: #000;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.instructions-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.instructions-card h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.instructions-card ol {
+  padding-left: 20px;
+}
+
+.instructions-card li {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.btn-primary {
+  width: 100%;
+  background: #fff;
+  color: #000;
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  margin-bottom: 24px;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deposits-list h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+
+.empty {
+  text-align: center;
+  color: #999;
+  padding: 24px;
+}
+
+.deposit-item {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+.deposit-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.deposit-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.status-pending {
+  background: #333;
+  color: #ffa500;
+}
+
+.status-confirmed {
+  background: #333;
+  color: #0f0;
+}
+
+.status-failed {
+  background: #333;
+  color: #f00;
+}
+
+.date {
+  color: #999;
+}
+

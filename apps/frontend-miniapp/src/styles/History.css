@@ -1,0 +1,163 @@
+.history {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.back-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #333;
+}
+
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #999;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  color: #fff;
+  border-bottom-color: #fff;
+}
+
+.content {
+  min-height: 200px;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
+
+.empty {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
+
+.bet-item,
+.deposit-item,
+.withdrawal-item {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+.bet-header,
+.deposit-header,
+.withdrawal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.block {
+  font-size: 18px;
+}
+
+.status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.status.won {
+  background: #0f0;
+  color: #000;
+}
+
+.status.lost {
+  background: #333;
+  color: #f00;
+}
+
+.status.pending {
+  background: #333;
+  color: #ffa500;
+}
+
+.status-pending {
+  background: #333;
+  color: #ffa500;
+}
+
+.status-confirmed,
+.status-completed {
+  background: #333;
+  color: #0f0;
+}
+
+.status-rejected {
+  background: #333;
+  color: #f00;
+}
+
+.status-processing {
+  background: #333;
+  color: #00f;
+}
+
+.bet-details,
+.deposit-details,
+.withdrawal-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.detail span:first-child {
+  color: #999;
+}
+
+.detail span:last-child {
+  font-weight: 600;
+}
+
+.payout {
+  color: #0f0;
+}
+

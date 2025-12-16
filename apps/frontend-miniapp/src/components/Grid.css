@@ -1,0 +1,33 @@
+.block-selection {
+  margin-bottom: 24px;
+}
+
+.block-selection h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.blocks-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.block-btn {
+  aspect-ratio: 1;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.block-btn.selected {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
