@@ -4,6 +4,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 // Load environment variables from .env before validation
+// NOTE: In production (Railway), .env files are NOT used.
+// All environment variables must be set in Railway → Service → Variables
 dotenv.config();
 
 function validateEnvVars() {
@@ -21,6 +23,7 @@ function validateEnvVars() {
     console.error('❌ Missing required environment variables:');
     missing.forEach(key => console.error(`   - ${key}`));
     console.error('\n💡 Copy .env.example to .env and fill in the values');
+    console.error('💡 On Railway: Set variables in Service → Variables (Railway does NOT read .env files)');
     process.exit(1);
   }
 
