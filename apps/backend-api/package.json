@@ -30,6 +30,7 @@
     "@nestjs/typeorm": "^10.0.1",
     "@nestjs/websockets": "^10.4.20",
     "@ton/core": "^0.62.0",
+    "@ton/crypto": "^3.3.0",
     "@ton/ton": "^16.1.0",
     "axios": "^1.6.2",
     "bcrypt": "^5.1.1",
