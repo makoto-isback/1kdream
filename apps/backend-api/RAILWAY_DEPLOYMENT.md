@@ -33,6 +33,10 @@ The backend **requires** the following environment variables at startup. If any 
 - **FRONTEND_URL** - Frontend URL for CORS (default: http://localhost:5173)
 - **TON_API_URL** - TON API endpoint (default: https://tonapi.io/v2)
 - **TON_API_KEY** - TON API key (optional, for rate limits)
+- **DATABASE_SYNC** - Enable TypeORM synchronize for initial schema creation (default: false)
+  - ⚠️ **TEMPORARY**: Only set to `true` for first deploy to create tables
+  - ⚠️ **IMPORTANT**: Set to `false` after first deploy and use migrations instead
+  - ⚠️ **WARNING**: Enabling this recreates tables on every restart - use with caution
 
 ## Railway Configuration
 
@@ -100,6 +104,14 @@ function validateEnvVars() {
 1. Verify `DATABASE_URL` is correctly formatted
 2. Check Railway PostgreSQL service is running
 3. Ensure database credentials are correct
+
+**Problem**: "relation 'users' does not exist" or similar database errors
+
+**Solution**:
+1. **First Deploy**: Set `DATABASE_SYNC=true` in Railway variables to create initial schema
+2. **After First Deploy**: Set `DATABASE_SYNC=false` and use migrations for future changes
+3. The app will automatically create all required tables on first startup with `DATABASE_SYNC=true`
+4. ⚠️ **Important**: Do NOT keep `DATABASE_SYNC=true` permanently - it recreates tables on restart
 
 ## Development vs Production
 

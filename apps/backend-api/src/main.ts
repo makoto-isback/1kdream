@@ -54,6 +54,14 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   const isDev = process.env.NODE_ENV === 'development';
+  const databaseSync = process.env.DATABASE_SYNC === 'true';
+  
+  // Warn if DATABASE_SYNC is enabled in production
+  if (!isDev && databaseSync) {
+    console.warn('⚠️  WARNING: DATABASE_SYNC=true is enabled in production!');
+    console.warn('⚠️  This should only be used for initial schema creation.');
+    console.warn('⚠️  After first deploy, set DATABASE_SYNC=false and use migrations instead.');
+  }
   
   await app.listen(port);
   console.log(`🚀 Server running on port ${port}`);

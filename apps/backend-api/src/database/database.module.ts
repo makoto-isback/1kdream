@@ -32,7 +32,10 @@ import { SystemSettings } from '../modules/system/entities/system-settings.entit
           PointsRedemption,
           SystemSettings,
         ],
-        synchronize: configService.get('NODE_ENV') === 'development',
+        // Synchronize: Only enable in development OR when explicitly enabled via DATABASE_SYNC=true
+        // WARNING: DATABASE_SYNC=true should only be used for initial schema creation in production
+        // After first deploy, disable this and use migrations instead
+        synchronize: configService.get('NODE_ENV') === 'development' || configService.get('DATABASE_SYNC') === 'true',
         logging: configService.get('NODE_ENV') === 'development',
         ssl: configService.get('DATABASE_URL')?.includes('supabase') ? {
           rejectUnauthorized: false,
