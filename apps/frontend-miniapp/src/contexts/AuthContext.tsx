@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthReady: boolean;
+  authError: string | null;
   login: () => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -18,12 +19,18 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const login = async () => {
     try {
       const isDev = import.meta.env.DEV;
       let telegramData;
+
+      // Check if we're in a Telegram WebApp environment
+      const isTelegramWebApp = typeof window !== 'undefined' && 
+        (window as any).Telegram?.WebApp || 
+        WebApp?.initDataUnsafe;
 
       if (isDev && (!WebApp.initDataUnsafe || !WebApp.initDataUnsafe.user)) {
         // Mock Telegram user for local development
@@ -39,6 +46,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         const initData = WebApp.initDataUnsafe;
         if (!initData.user) {
+          // In production, if not in Telegram WebApp, show error
+          if (!isDev && !isTelegramWebApp) {
+            throw new Error('TELEGRAM_WEBAPP_REQUIRED');
+          }
           throw new Error('No user data from Telegram');
         }
         telegramData = {
@@ -63,11 +74,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { access_token, user: userData } = response.data;
       localStorage.setItem('token', access_token);
       setUser(userData);
+      setAuthError(null);
       
       // Connect Socket.IO after successful login (singleton - only connects if not already connected)
       socketService.connect(access_token);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
+      
+      // Handle Telegram WebApp required error
+      if (error?.message === 'TELEGRAM_WEBAPP_REQUIRED') {
+        setAuthError('TELEGRAM_WEBAPP_REQUIRED');
+      } else if (error?.response?.status === 401 || error?.message?.includes('Telegram')) {
+        setAuthError('TELEGRAM_WEBAPP_REQUIRED');
+      } else {
+        setAuthError(error?.message || 'Authentication failed');
+      }
+      
       throw error;
     }
   };
@@ -124,7 +146,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthReady, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, isAuthReady, authError, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
