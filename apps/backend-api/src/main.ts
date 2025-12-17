@@ -46,29 +46,9 @@ async function bootstrap() {
     transform: true,
   }));
 
-  // CORS configuration: Allow production frontend and localhost for development
-  const allowedOrigins = process.env.FRONTEND_URL
-    ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
-    : ['http://localhost:5173'];
-  
-  // Always include localhost for development if not already present
-  if (!allowedOrigins.includes('http://localhost:5173')) {
-    allowedOrigins.push('http://localhost:5173');
-  }
-
+  // CORS configuration: Allow all origins (safe for Telegram Mini App with JWT auth)
   app.enableCors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
-      if (!origin) {
-        return callback(null, true);
-      }
-      
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: true,
     credentials: true,
   });
 

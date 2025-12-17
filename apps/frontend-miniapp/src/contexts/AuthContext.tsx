@@ -25,42 +25,77 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async () => {
     try {
       const isDev = import.meta.env.DEV;
-      let telegramData;
-
-      // Check if we're in a Telegram WebApp environment
-      const isTelegramWebApp = typeof window !== 'undefined' && 
-        (window as any).Telegram?.WebApp || 
-        WebApp?.initDataUnsafe;
-
-      if (isDev && (!WebApp.initDataUnsafe || !WebApp.initDataUnsafe.user)) {
-        // Mock Telegram user for local development
-        console.warn('🔧 DEV MODE: Using mock Telegram user');
-        telegramData = {
-          id: '123456789',
-          first_name: 'Dev',
-          last_name: 'User',
-          username: 'devuser',
-          auth_date: Math.floor(Date.now() / 1000),
-          hash: 'mock-hash-dev',
-        };
-      } else {
-        const initData = WebApp.initDataUnsafe;
-        if (!initData.user) {
-          // In production, if not in Telegram WebApp, show error
-          if (!isDev && !isTelegramWebApp) {
-            throw new Error('TELEGRAM_WEBAPP_REQUIRED');
-          }
-          throw new Error('No user data from Telegram');
+      
+      // Safe Telegram WebApp detection - tolerant and non-throwing
+      const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
+      
+      if (!tg) {
+        if (isDev) {
+          // Mock Telegram user for local development
+          console.warn('🔧 DEV MODE: Telegram WebApp not available, using mock user');
+          const telegramData = {
+            id: '123456789',
+            first_name: 'Dev',
+            last_name: 'User',
+            username: 'devuser',
+            auth_date: Math.floor(Date.now() / 1000),
+            hash: 'mock-hash-dev',
+          };
+          
+          const response = await api.post('/auth/telegram', telegramData);
+          const { access_token, user: userData } = response.data;
+          localStorage.setItem('token', access_token);
+          setUser(userData);
+          setAuthError(null);
+          socketService.connect(access_token);
+          return;
+        } else {
+          // Production: Telegram WebApp not available yet, wait
+          console.warn('Telegram WebApp not available yet');
+          setAuthError('TELEGRAM_WEBAPP_REQUIRED');
+          return; // Do NOT throw - just wait
         }
-        telegramData = {
-          id: initData.user.id.toString(),
-          first_name: initData.user.first_name,
-          last_name: initData.user.last_name,
-          username: initData.user.username,
-          auth_date: initData.auth_date,
-          hash: initData.hash || '',
-        };
       }
+
+      const user = tg.initDataUnsafe?.user;
+      
+      if (!user) {
+        if (isDev) {
+          // Mock Telegram user for local development
+          console.warn('🔧 DEV MODE: Telegram user data not ready, using mock user');
+          const telegramData = {
+            id: '123456789',
+            first_name: 'Dev',
+            last_name: 'User',
+            username: 'devuser',
+            auth_date: Math.floor(Date.now() / 1000),
+            hash: 'mock-hash-dev',
+          };
+          
+          const response = await api.post('/auth/telegram', telegramData);
+          const { access_token, user: userData } = response.data;
+          localStorage.setItem('token', access_token);
+          setUser(userData);
+          setAuthError(null);
+          socketService.connect(access_token);
+          return;
+        } else {
+          // Production: User data not ready yet, wait
+          console.warn('Telegram user data not ready yet');
+          setAuthError('TELEGRAM_WEBAPP_REQUIRED');
+          return; // Do NOT throw - just wait
+        }
+      }
+
+      // Normal auth flow with Telegram user data
+      const telegramData = {
+        id: user.id.toString(),
+        first_name: user.first_name,
+        last_name: user.last_name,
+        username: user.username,
+        auth_date: tg.initDataUnsafe.auth_date,
+        hash: tg.initDataUnsafe.hash || '',
+      };
 
       const response = await api.post('/auth/telegram', {
         id: telegramData.id,
@@ -81,16 +116,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error: any) {
       console.error('Login error:', error);
       
-      // Handle Telegram WebApp required error
-      if (error?.message === 'TELEGRAM_WEBAPP_REQUIRED') {
-        setAuthError('TELEGRAM_WEBAPP_REQUIRED');
-      } else if (error?.response?.status === 401 || error?.message?.includes('Telegram')) {
+      // Handle network/API errors - don't throw, just set error state
+      if (error?.response?.status === 401) {
         setAuthError('TELEGRAM_WEBAPP_REQUIRED');
       } else {
         setAuthError(error?.message || 'Authentication failed');
       }
       
-      throw error;
+      // Don't throw - let the app continue and show error state
     }
   };
 

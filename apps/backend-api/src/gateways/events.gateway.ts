@@ -13,23 +13,9 @@ interface AuthenticatedSocket extends Socket {
   userId?: string;
 }
 
-// CORS configuration: Allow production frontend and localhost for development
-const getAllowedOrigins = () => {
-  const allowedOrigins = process.env.FRONTEND_URL
-    ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
-    : ['http://localhost:5173'];
-  
-  // Always include localhost for development if not already present
-  if (!allowedOrigins.includes('http://localhost:5173')) {
-    allowedOrigins.push('http://localhost:5173');
-  }
-  
-  return allowedOrigins;
-};
-
 @WebSocketGateway({
   cors: {
-    origin: getAllowedOrigins(),
+    origin: true,
     credentials: true,
   },
   namespace: '/events',
