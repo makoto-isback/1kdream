@@ -10,12 +10,12 @@ export default defineConfig({
     },
   },
   server: {
-    port: parseInt(process.env.PORT || '5173'),
     host: true,
+    allowedHosts: 'all'
   },
   preview: {
-    port: parseInt(process.env.PORT || '5173'),
     host: true,
+    allowedHosts: 'all'
   },
 });
 
