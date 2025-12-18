@@ -14,12 +14,30 @@ export class TonService implements OnModuleInit {
   private derivedWalletAddress: string | null = null;
   private isInitialized: boolean = false;
   private isWalletReady: boolean = false;
+  private tonApiKey: string | null = null;
 
   constructor(private configService: ConfigService) {
     this.walletAddress = this.configService.get('TON_WALLET_ADDRESS') || '';
     this.network = this.configService.get('TON_NETWORK') || 'mainnet';
     this.tonApiUrl = this.configService.get('TON_API_URL') || 'https://tonapi.io/v2';
     this.seedPhrase = this.configService.get('TON_SEED_PHRASE') || null;
+    // Get and trim API key once
+    const apiKey = this.configService.get('TON_API_KEY');
+    this.tonApiKey = apiKey ? apiKey.trim() : null;
+  }
+
+  /**
+   * Get TON API request headers with authentication
+   * Returns headers with Authorization Bearer token if API key is available
+   */
+  private getTonApiHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    
+    if (this.tonApiKey) {
+      headers['Authorization'] = `Bearer ${this.tonApiKey}`;
+    }
+    
+    return headers;
   }
 
   async onModuleInit() {
@@ -127,9 +145,7 @@ export class TonService implements OnModuleInit {
           limit: 100,
           ...(since && { start_lt: since }),
         },
-        headers: {
-          'Authorization': `Bearer ${this.configService.get('TON_API_KEY')}`,
-        },
+        headers: this.getTonApiHeaders(),
       });
 
       const transactions = response.data?.transactions || [];
@@ -236,9 +252,7 @@ export class TonService implements OnModuleInit {
 
       // Get current block height
       const currentBlockResponse = await axios.get(`${this.tonApiUrl}/blockchain/masterchain-head`, {
-        headers: {
-          'Authorization': `Bearer ${this.configService.get('TON_API_KEY')}`,
-        },
+        headers: this.getTonApiHeaders(),
       });
 
       const currentBlock = currentBlockResponse.data?.seqno || 0;
@@ -284,9 +298,7 @@ export class TonService implements OnModuleInit {
           limit: 100,
           ...(since && { start_lt: since }),
         },
-        headers: {
-          'Authorization': `Bearer ${this.configService.get('TON_API_KEY')}`,
-        },
+        headers: this.getTonApiHeaders(),
       });
 
       // Filter for USDT jetton transfers
@@ -308,9 +320,7 @@ export class TonService implements OnModuleInit {
   async getTransaction(txHash: string): Promise<any> {
     try {
       const response = await axios.get(`${this.tonApiUrl}/blockchain/transactions/${txHash}`, {
-        headers: {
-          'Authorization': `Bearer ${this.configService.get('TON_API_KEY')}`,
-        },
+        headers: this.getTonApiHeaders(),
       });
       return response.data;
     } catch (error) {
