@@ -1,10 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { tonConnectService, WalletInfo } from '../services/tonConnect';
+import { useClientReady } from '../hooks/useClientReady';
 
 interface WalletContextType {
   walletInfo: WalletInfo | null;
   isConnected: boolean;
   isLoading: boolean;
+  isClientReady: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   signTransaction: (transaction: any) => Promise<string>;
@@ -15,10 +17,16 @@ interface WalletContextType {
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
+  const isClientReady = useClientReady();
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Only load wallet info on client-side
+    if (!isClientReady) {
+      return;
+    }
+
     // Load wallet info from storage on mount
     const loadWallet = async () => {
       try {
@@ -37,9 +45,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     };
 
     loadWallet();
-  }, []);
+  }, [isClientReady]);
 
   const connect = async () => {
+    if (!isClientReady) {
+      throw new Error('Wallet connection not available during SSR');
+    }
+
     try {
       setIsLoading(true);
       const info = await tonConnectService.connect();
@@ -53,6 +65,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const disconnect = async () => {
+    if (!isClientReady) {
+      return;
+    }
+
     try {
       setIsLoading(true);
       await tonConnectService.disconnect();
@@ -65,7 +81,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signTransaction = async (transaction: any): Promise<string> => {
+  const signTransaction = async (transaction: any) => {
+    if (!isClientReady) {
+      throw new Error('Transaction signing not available during SSR');
+    }
     return await tonConnectService.signTransaction(transaction);
   };
 
@@ -83,6 +102,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         walletInfo,
         isConnected: !!walletInfo?.connected,
         isLoading,
+        isClientReady,
         connect,
         disconnect,
         signTransaction,
@@ -102,4 +122,3 @@ export const useWallet = () => {
   }
   return context;
 };
-

@@ -10,13 +10,28 @@ class TonConnectService {
   private connector: TonConnectSDK | null = null;
   private walletInfo: WalletInfo | null = null;
   private readonly STORAGE_KEY = 'ton_wallet_info';
+  private initialized: boolean = false;
 
-  constructor() {
-    this.initializeConnector();
-    this.loadWalletFromStorage();
+  // Lazy initialization - only when window is available
+  private ensureInitialized(): void {
+    if (this.initialized || typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      this.initializeConnector();
+      this.loadWalletFromStorage();
+      this.initialized = true;
+    } catch (error) {
+      console.error('[TON Connect] Failed to initialize:', error);
+    }
   }
 
   private initializeConnector() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     try {
       // Create manifest for TON Connect
       const manifest = {
@@ -52,6 +67,10 @@ class TonConnectService {
   }
 
   private loadWalletFromStorage() {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return;
+    }
+
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
@@ -63,6 +82,10 @@ class TonConnectService {
   }
 
   private saveWalletToStorage(walletInfo: WalletInfo | null) {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return;
+    }
+
     try {
       if (walletInfo) {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(walletInfo));
@@ -75,8 +98,10 @@ class TonConnectService {
   }
 
   async connect(): Promise<WalletInfo> {
+    this.ensureInitialized();
+
     if (!this.connector) {
-      throw new Error('TON Connect not initialized');
+      throw new Error('TON Connect not initialized - window not available');
     }
 
     try {
@@ -151,14 +176,24 @@ class TonConnectService {
   }
 
   getWalletInfo(): WalletInfo | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    this.ensureInitialized();
     return this.walletInfo;
   }
 
   isConnected(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    this.ensureInitialized();
     return this.connector?.connected || false;
   }
 
   async signTransaction(transaction: any): Promise<string> {
+    this.ensureInitialized();
+
     if (!this.connector || !this.connector.connected) {
       throw new Error('Wallet not connected');
     }
@@ -214,5 +249,5 @@ class TonConnectService {
   }
 }
 
+// Create singleton instance (but don't initialize until client-side)
 export const tonConnectService = new TonConnectService();
-

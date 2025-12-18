@@ -5,6 +5,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { useUsdtWallet, kyatToUsdt } from '../hooks/useUsdtWallet';
 import { useWallet } from '../contexts/WalletContext';
 import { activationService } from '../services/activation';
+import { useClientReady } from '../hooks/useClientReady';
 import api from '../services/api';
 import './Deposit.css';
 
@@ -12,11 +13,13 @@ export default function Deposit() {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
+  const isClientReady = useClientReady();
   const { 
     isWalletConnected, 
     walletAddress, 
     connectWallet, 
     isLoading: walletLoading,
+    isClientReady: walletClientReady,
     signTransaction,
     createUsdtTransferTransaction,
     createTonTransferTransaction,
@@ -171,7 +174,7 @@ export default function Deposit() {
         </div>
 
         {/* Wallet Connection */}
-        {!isWalletConnected && (
+        {!isWalletConnected && isClientReady && walletClientReady && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to deposit</p>
@@ -182,6 +185,15 @@ export default function Deposit() {
               >
                 {walletLoading ? t('common.loading') : 'Connect Wallet'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Loading state during SSR */}
+        {!isClientReady && (
+          <div className="form-card">
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p style={{ marginBottom: '16px' }}>Loading wallet...</p>
             </div>
           </div>
         )}

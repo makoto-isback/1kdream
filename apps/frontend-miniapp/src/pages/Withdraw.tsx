@@ -4,13 +4,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
 import { useUsdtWallet, kyatToUsdt, getWithdrawalTimeRemaining, formatCountdown } from '../hooks/useUsdtWallet';
 import { useWallet } from '../contexts/WalletContext';
+import { useClientReady } from '../hooks/useClientReady';
 import './Withdraw.css';
 
 export default function Withdraw() {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
-  const { isWalletConnected, walletAddress } = useWallet();
+  const isClientReady = useClientReady();
+  const { isWalletConnected, walletAddress, isClientReady: walletClientReady } = useWallet();
   const {
     isActivated,
     withdrawals,
@@ -116,13 +118,22 @@ export default function Withdraw() {
         </div>
 
         {/* Wallet Connection Check */}
-        {!isWalletConnected && (
+        {!isWalletConnected && isClientReady && walletClientReady && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to withdraw</p>
               <p style={{ fontSize: '12px', color: '#999' }}>
                 Go to Deposit page to connect wallet
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Loading state during SSR */}
+        {!isClientReady && (
+          <div className="form-card">
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p style={{ marginBottom: '16px' }}>Loading wallet...</p>
             </div>
           </div>
         )}
