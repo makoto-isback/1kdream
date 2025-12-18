@@ -136,8 +136,7 @@ export class UsdtWithdrawalsService {
       user.kyatBalance = Number(user.kyatBalance) - kyatAmount;
       await queryRunner.manager.save(user);
 
-      // Create withdrawal record
-      const now = new Date();
+      // Create withdrawal record (reuse 'now' variable from line 87)
       const executeAfter = new Date(now.getTime() + 60 * 60 * 1000); // +1 hour
 
       const withdrawal = queryRunner.manager.create(UsdtWithdrawal, {
