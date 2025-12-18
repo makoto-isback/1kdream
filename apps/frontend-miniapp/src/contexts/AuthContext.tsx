@@ -26,93 +26,58 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const isDev = import.meta.env.DEV;
       
-      // Safe Telegram WebApp detection - tolerant and non-throwing
+      // Detect Telegram Mini App
       const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
+      const initData = tg?.initData;
       
-      if (!tg) {
+      if (!tg || !initData) {
         if (isDev) {
           // Mock Telegram user for local development
           console.warn('🔧 DEV MODE: Telegram WebApp not available, using mock user');
-          const telegramData = {
-            id: '123456789',
-            first_name: 'Dev',
-            last_name: 'User',
-            username: 'devuser',
-            auth_date: Math.floor(Date.now() / 1000),
-            hash: 'mock-hash-dev',
-          };
+          const mockInitData = 'user=%7B%22id%22%3A123456789%7D&auth_date=' + Math.floor(Date.now() / 1000) + '&hash=mock-hash-dev';
           
-          const response = await api.post('/auth/telegram', telegramData);
-          const { access_token, user: userData } = response.data;
-          localStorage.setItem('token', access_token);
-          setUser(userData);
-          setAuthError(null);
-          socketService.connect(access_token);
+          const response = await api.post('/auth/telegram', { initData: mockInitData });
+          const token = response.data.accessToken || response.data.access_token;
+          if (token) {
+            localStorage.setItem('token', token);
+            console.log('JWT saved');
+            const userData = response.data.user;
+            if (userData) {
+              setUser(userData);
+            }
+            setAuthError(null);
+            socketService.connect(token);
+          }
           return;
         } else {
-          // Production: Telegram WebApp not available yet, wait
-          console.warn('Telegram WebApp not available yet');
+          // Production: Telegram WebApp required
+          console.error('Telegram Mini App required: initData not found');
           setAuthError('TELEGRAM_WEBAPP_REQUIRED');
-          return; // Do NOT throw - just wait
+          return;
         }
       }
 
-      const user = tg.initDataUnsafe?.user;
+      // Use Telegram initData directly
+      console.log('Telegram initData detected');
       
-      if (!user) {
-        if (isDev) {
-          // Mock Telegram user for local development
-          console.warn('🔧 DEV MODE: Telegram user data not ready, using mock user');
-          const telegramData = {
-            id: '123456789',
-            first_name: 'Dev',
-            last_name: 'User',
-            username: 'devuser',
-            auth_date: Math.floor(Date.now() / 1000),
-            hash: 'mock-hash-dev',
-          };
-          
-          const response = await api.post('/auth/telegram', telegramData);
-          const { access_token, user: userData } = response.data;
-          localStorage.setItem('token', access_token);
+      const response = await api.post('/auth/telegram', { initData });
+      const token = response.data.accessToken || response.data.access_token;
+      
+      if (token) {
+        localStorage.setItem('token', token);
+        console.log('JWT saved');
+        const userData = response.data.user;
+        if (userData) {
           setUser(userData);
-          setAuthError(null);
-          socketService.connect(access_token);
-          return;
-        } else {
-          // Production: User data not ready yet, wait
-          console.warn('Telegram user data not ready yet');
-          setAuthError('TELEGRAM_WEBAPP_REQUIRED');
-          return; // Do NOT throw - just wait
         }
+        setAuthError(null);
+        
+        // Connect Socket.IO after successful login (singleton - only connects if not already connected)
+        socketService.connect(token);
+      } else {
+        console.error('Auth failed: No access token in response');
+        setAuthError('Authentication failed: No token received');
       }
-
-      // Normal auth flow with Telegram user data
-      const telegramData = {
-        id: user.id.toString(),
-        first_name: user.first_name,
-        last_name: user.last_name,
-        username: user.username,
-        auth_date: tg.initDataUnsafe.auth_date,
-        hash: tg.initDataUnsafe.hash || '',
-      };
-
-      const response = await api.post('/auth/telegram', {
-        id: telegramData.id,
-        first_name: telegramData.first_name,
-        last_name: telegramData.last_name,
-        username: telegramData.username,
-        auth_date: telegramData.auth_date,
-        hash: telegramData.hash,
-      });
-
-      const { access_token, user: userData } = response.data;
-      localStorage.setItem('token', access_token);
-      setUser(userData);
-      setAuthError(null);
-      
-      // Connect Socket.IO after successful login (singleton - only connects if not already connected)
-      socketService.connect(access_token);
     } catch (error: any) {
       console.error('Login error:', error);
       
@@ -148,6 +113,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const init = async () => {
       try {
         const existingToken = localStorage.getItem('token');
+        console.log('JWT present:', Boolean(existingToken));
 
         if (existingToken) {
           try {
