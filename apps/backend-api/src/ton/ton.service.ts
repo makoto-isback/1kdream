@@ -276,8 +276,14 @@ export class TonService implements OnModuleInit {
         headers: this.getTonApiHeaders(),
       });
 
-      const currentBlock = currentBlockResponse.data?.result?.last?.seqno || 0;
-      const txBlock = tx.transaction?.block_id?.seqno || 0;
+      const currentBlock = currentBlockResponse.data?.result?.last?.seqno || currentBlockResponse.data?.result?.last_seqno || 0;
+      
+      // TON Center API v3: transaction block info can be in different locations
+      const txBlock = tx.transaction?.block_id?.seqno || 
+                     tx.block_id?.seqno || 
+                     tx.block?.seqno || 
+                     tx.block_seqno || 
+                     0;
 
       return Math.max(0, currentBlock - txBlock);
     } catch (error) {
