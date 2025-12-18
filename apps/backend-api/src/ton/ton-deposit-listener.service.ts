@@ -1,0 +1,256 @@
+import { Injectable, Logger, Inject, forwardRef, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
+import { TonService } from './ton.service';
+import { DepositsService } from '../modules/wallet/deposits/deposits.service';
+import { DataSource } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Deposit, DepositStatus } from '../modules/wallet/deposits/entities/deposit.entity';
+import { User } from '../modules/users/entities/user.entity';
+
+@Injectable()
+export class TonDepositListenerService implements OnModuleInit {
+  private readonly logger = new Logger(TonDepositListenerService.name);
+  private lastCheckedTimestamp: number = Date.now();
+  private isEnabled: boolean = false;
+  private readonly requiredConfirmations: number;
+
+  constructor(
+    private tonService: TonService,
+    private configService: ConfigService,
+    @Inject(forwardRef(() => DepositsService))
+    private depositsService: DepositsService,
+    @InjectDataSource()
+    private dataSource: DataSource,
+  ) {
+    this.requiredConfirmations = parseInt(
+      this.configService.get('TON_DEPOSIT_CONFIRMATIONS') || '10',
+      10,
+    );
+  }
+
+  async onModuleInit() {
+    // Only enable if explicitly enabled and wallet is initialized
+    const enableDeposits = this.configService.get('TON_ENABLE_DEPOSITS') === 'true';
+    const network = this.configService.get('TON_NETWORK') || 'mainnet';
+    const isWalletInitialized = this.tonService.isWalletInitialized();
+
+    if (!enableDeposits) {
+      this.logger.log('[TON DEPOSIT] TON deposit listener is DISABLED (TON_ENABLE_DEPOSITS not set to true)');
+      return;
+    }
+
+    if (network !== 'mainnet') {
+      this.logger.warn('[TON DEPOSIT] TON deposit listener only supports mainnet. Current network:', network);
+      return;
+    }
+
+    if (!isWalletInitialized) {
+      this.logger.error('[TON DEPOSIT] TON deposit listener cannot start: wallet not initialized from seed phrase');
+      return;
+    }
+
+    this.isEnabled = true;
+    this.logger.log(`[TON DEPOSIT] TON deposit listener started (confirmations required: ${this.requiredConfirmations})`);
+    this.lastCheckedTimestamp = Date.now();
+    
+    // Initial check
+    await this.checkForDeposits();
+  }
+
+  /**
+   * Check for new TON deposits every 30 seconds
+   */
+  @Cron('*/30 * * * * *') // Every 30 seconds
+  async checkForDeposits() {
+    if (!this.isEnabled) {
+      return;
+    }
+
+    try {
+      this.logger.debug('[TON DEPOSIT] Checking for new TON deposits...');
+      
+      const transactions = await this.tonService.checkTonTransfers(this.lastCheckedTimestamp);
+      
+      for (const tx of transactions) {
+        const txHash = tx.hash || tx.tx_hash;
+        if (!txHash) continue;
+
+        await this.processDeposit(tx);
+      }
+
+      this.lastCheckedTimestamp = Date.now();
+    } catch (error) {
+      this.logger.error('[TON DEPOSIT] Error checking for deposits:', error);
+    }
+  }
+
+  /**
+   * Process a detected TON deposit
+   */
+  private async processDeposit(transaction: any) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const txHash = transaction.hash || transaction.tx_hash;
+      if (!txHash) {
+        this.logger.warn('[TON DEPOSIT] Transaction missing hash');
+        return;
+      }
+
+      // Check if deposit already exists (idempotent)
+      const existing = await this.depositsService.findByTxHash(txHash);
+      if (existing) {
+        this.logger.debug(`[TON DEPOSIT] Deposit ${txHash} already processed`);
+        
+        // Check if it needs confirmation
+        if (existing.status === DepositStatus.PENDING) {
+          await this.checkAndConfirmDeposit(existing, txHash);
+        }
+        
+        await queryRunner.commitTransaction();
+        return;
+      }
+
+      // Parse transaction details
+      const tonAmount = this.tonService.parseTonAmount(transaction);
+      const comment = this.tonService.parseTransactionComment(transaction);
+      const senderAddress = transaction.in_msg?.source?.address || null;
+
+      if (tonAmount <= 0) {
+        this.logger.debug(`[TON DEPOSIT] Skipping transaction ${txHash}: zero amount`);
+        await queryRunner.commitTransaction();
+        return;
+      }
+
+      // Parse deposit memo: format "deposit:<userId>"
+      let userId: string | null = null;
+      if (comment) {
+        const match = comment.match(/^deposit:([a-f0-9-]{36})$/i); // UUID format
+        if (match) {
+          userId = match[1];
+        }
+      }
+
+      // Convert TON to USDT (1 TON ≈ 1 USDT, but we'll use actual rate if needed)
+      // For now, assuming 1 TON = 1 USDT
+      const usdtAmount = tonAmount;
+      const kyatAmount = usdtAmount * 5000; // 1 USDT = 5000 KYAT
+
+      if (userId) {
+        // User ID found in memo - create deposit with user
+        this.logger.log(
+          `[TON DEPOSIT] New TON deposit detected: ${tonAmount} TON (${usdtAmount} USDT) from ${senderAddress} for user ${userId} (${txHash})`
+        );
+
+        // Verify user exists
+        const user = await queryRunner.manager.findOne(User, {
+          where: { id: userId },
+        });
+
+        if (!user) {
+          this.logger.warn(`[TON DEPOSIT] User ${userId} not found for transaction ${txHash}`);
+          // Create as pending_manual for admin review
+          const deposit = await this.depositsService.createPendingManualDeposit(
+            senderAddress || '',
+            usdtAmount,
+            txHash,
+          );
+          this.logger.log(`[TON DEPOSIT] Created pending_manual deposit: ${deposit.id}`);
+        } else {
+          // Create deposit with user
+          await this.createPendingDeposit(
+            queryRunner,
+            userId,
+            senderAddress,
+            usdtAmount,
+            kyatAmount,
+            txHash,
+          );
+        }
+      } else {
+        // No user ID in memo - create as pending_manual
+        this.logger.log(
+          `[TON DEPOSIT] New TON deposit detected without user ID: ${tonAmount} TON (${usdtAmount} USDT) from ${senderAddress} (${txHash})`
+        );
+
+        const deposit = await this.depositsService.createPendingManualDeposit(
+          senderAddress || '',
+          usdtAmount,
+          txHash,
+        );
+        this.logger.log(`[TON DEPOSIT] Created pending_manual deposit: ${deposit.id}`);
+      }
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`[TON DEPOSIT] Error processing deposit:`, error);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Create pending deposit record
+   */
+  private async createPendingDeposit(
+    queryRunner: any,
+    userId: string | null,
+    senderAddress: string | null,
+    usdtAmount: number,
+    kyatAmount: number,
+    txHash: string,
+  ) {
+    const deposit = queryRunner.manager.create(Deposit, {
+      userId,
+      usdtAmount,
+      kyatAmount,
+      tonTxHash: txHash,
+      senderTonAddress: senderAddress,
+      status: userId ? DepositStatus.PENDING : DepositStatus.PENDING_MANUAL,
+    });
+
+    await queryRunner.manager.save(deposit);
+    this.logger.log(`[TON DEPOSIT] Created deposit record: ${deposit.id} (status: ${deposit.status})`);
+  }
+
+  /**
+   * Check and confirm deposit after required confirmations
+   */
+  private async checkAndConfirmDeposit(deposit: Deposit, txHash: string) {
+    try {
+      const confirmations = await this.tonService.getTransactionConfirmations(txHash);
+      
+      if (confirmations >= this.requiredConfirmations) {
+        this.logger.log(
+          `[TON DEPOSIT] Deposit ${txHash} has ${confirmations} confirmations (required: ${this.requiredConfirmations}). Auto-confirming...`
+        );
+
+        // Auto-confirm deposit
+        if (deposit.userId) {
+          await this.depositsService.confirmDeposit(
+            deposit.id,
+            txHash,
+            'system', // System auto-confirmation
+            deposit.userId,
+          );
+          this.logger.log(`[TON DEPOSIT] Auto-confirmed deposit ${deposit.id} for user ${deposit.userId}`);
+        } else {
+          this.logger.log(
+            `[TON DEPOSIT] Deposit ${deposit.id} has enough confirmations but no user ID. Requires manual confirmation.`
+          );
+        }
+      } else {
+        this.logger.debug(
+          `[TON DEPOSIT] Deposit ${txHash} has ${confirmations}/${this.requiredConfirmations} confirmations. Waiting...`
+        );
+      }
+    } catch (error) {
+      this.logger.error(`[TON DEPOSIT] Error checking confirmations for ${txHash}:`, error);
+    }
+  }
+}
+

@@ -27,6 +27,40 @@ function validateEnvVars() {
     process.exit(1);
   }
 
+  // Validate TON deposit configuration if enabled
+  const tonDepositsEnabled = process.env.TON_ENABLE_DEPOSITS === 'true';
+  if (tonDepositsEnabled) {
+    const network = process.env.TON_NETWORK || 'mainnet';
+    if (network !== 'mainnet') {
+      console.error('❌ TON deposits only supported on mainnet. Current network:', network);
+      process.exit(1);
+    }
+
+    const seedPhrase = process.env.TON_SEED_PHRASE;
+    const walletAddress = process.env.TON_WALLET_ADDRESS;
+
+    if (!seedPhrase) {
+      console.error('❌ TON_ENABLE_DEPOSITS=true requires TON_SEED_PHRASE');
+      console.error('   TON_SEED_PHRASE should be 12 or 24 words (space-separated)');
+      process.exit(1);
+    }
+
+    // Validate seed phrase format (12 or 24 words)
+    const words = seedPhrase.trim().split(/\s+/);
+    if (words.length !== 12 && words.length !== 24) {
+      console.error(`❌ Invalid TON_SEED_PHRASE: ${words.length} words (expected 12 or 24)`);
+      process.exit(1);
+    }
+
+    if (!walletAddress) {
+      console.warn('⚠️  TON_WALLET_ADDRESS not set. Will derive from seed phrase.');
+    } else {
+      console.log('✅ TON deposit configuration validated');
+      console.log('   - TON_SEED_PHRASE: Provided');
+      console.log('   - TON_WALLET_ADDRESS: Will be verified against derived address');
+    }
+  }
+
   // Warn if JWT_SECRET is default
   if (process.env.JWT_SECRET === 'your-super-secret-jwt-key-change-this-in-production') {
     console.warn('⚠️  WARNING: Using default JWT_SECRET. Change it in production!');
@@ -71,6 +105,12 @@ async function bootstrap() {
     console.log(`📝 Use admin endpoints to manually confirm deposits`);
   } else {
     console.log(`📡 USDT deposit listener will start automatically`);
+    
+    const tonDepositsEnabled = process.env.TON_ENABLE_DEPOSITS === 'true';
+    if (tonDepositsEnabled) {
+      console.log(`💰 TON deposit listener will start automatically`);
+      console.log(`   - Confirmations required: ${process.env.TON_DEPOSIT_CONFIRMATIONS || '10'}`);
+    }
   }
 }
 
