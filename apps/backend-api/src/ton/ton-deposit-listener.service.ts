@@ -30,10 +30,9 @@ export class TonDepositListenerService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    // Only enable if explicitly enabled and wallet is initialized
+    // Only enable if explicitly enabled
     const enableDeposits = this.configService.get('TON_ENABLE_DEPOSITS') === 'true';
     const network = this.configService.get('TON_NETWORK') || 'mainnet';
-    const isWalletInitialized = this.tonService.isWalletInitialized();
 
     if (!enableDeposits) {
       this.logger.log('[TON DEPOSIT] TON deposit listener is DISABLED (TON_ENABLE_DEPOSITS not set to true)');
@@ -45,17 +44,52 @@ export class TonDepositListenerService implements OnModuleInit {
       return;
     }
 
-    if (!isWalletInitialized) {
-      this.logger.error('[TON DEPOSIT] TON deposit listener cannot start: wallet not initialized from seed phrase');
-      return;
-    }
+    // Wait for wallet to be ready (with retries)
+    await this.waitForWalletReady();
 
+    // Start the listener
     this.isEnabled = true;
     this.logger.log(`[TON DEPOSIT] TON deposit listener started (confirmations required: ${this.requiredConfirmations})`);
     this.lastCheckedTimestamp = Date.now();
     
     // Initial check
     await this.checkForDeposits();
+  }
+
+  /**
+   * Wait for wallet to be ready with retries
+   * Idempotent and production-safe
+   */
+  private async waitForWalletReady(): Promise<void> {
+    const maxRetries = 30; // 30 retries = 15 seconds total (500ms * 30)
+    const retryDelay = 500; // 500ms between retries
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (this.tonService.isWalletReadyForUse()) {
+        this.logger.log('[TON DEPOSIT] Wallet is ready');
+        return;
+      }
+
+      if (attempt === 1) {
+        this.logger.log('[TON DEPOSIT] Waiting for wallet initialization...');
+      }
+
+      // Wait before next retry
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+
+    // If we get here, wallet is still not ready after max retries
+    // Check if wallet initialization failed or if seed phrase is not provided
+    const hasSeedPhrase = !!this.configService.get('TON_SEED_PHRASE');
+    
+    if (!hasSeedPhrase) {
+      this.logger.warn('[TON DEPOSIT] TON_SEED_PHRASE not provided. Listener will not start.');
+      return;
+    }
+
+    // Wallet initialization may have failed
+    this.logger.warn('[TON DEPOSIT] Wallet initialization timeout. Listener will not start.');
+    this.logger.warn('[TON DEPOSIT] Check logs for wallet initialization errors.');
   }
 
   /**

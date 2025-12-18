@@ -13,6 +13,7 @@ export class TonService implements OnModuleInit {
   private seedPhrase: string | null = null;
   private derivedWalletAddress: string | null = null;
   private isInitialized: boolean = false;
+  private isWalletReady: boolean = false;
 
   constructor(private configService: ConfigService) {
     this.walletAddress = this.configService.get('TON_WALLET_ADDRESS') || '';
@@ -66,6 +67,7 @@ export class TonService implements OnModuleInit {
       // Mark as initialized (we have the keypair, address verification is optional)
       this.derivedWalletAddress = this.walletAddress; // Use configured address
       this.isInitialized = true;
+      this.isWalletReady = true; // Wallet is ready for use
 
       this.logger.log(`[TON DEPOSIT] Wallet initialized successfully from seed phrase`);
       if (this.walletAddress) {
@@ -73,6 +75,7 @@ export class TonService implements OnModuleInit {
       }
     } catch (error) {
       this.logger.error('[TON DEPOSIT] Error initializing wallet from seed phrase:', error);
+      // Don't set isWalletReady on error - wallet is not ready
       throw error;
     }
   }
@@ -93,6 +96,14 @@ export class TonService implements OnModuleInit {
    */
   isWalletInitialized(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Check if wallet is ready for use (initialized and ready)
+   * This is separate from isInitialized to handle async initialization
+   */
+  isWalletReadyForUse(): boolean {
+    return this.isWalletReady;
   }
 
   /**
