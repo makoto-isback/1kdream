@@ -1,0 +1,7 @@
+#!/bin/bash
+# Railway CLI wrapper using npx
+# This allows you to use 'railway' command without global installation
+# Usage: ./railway [command] or add to PATH
+
+npx @railway/cli "$@"
+
