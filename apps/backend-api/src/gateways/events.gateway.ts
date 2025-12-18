@@ -148,6 +148,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
+   * Emit event to specific user
+   */
+  emitToUser(userId: string, event: string, data: any) {
+    let emittedCount = 0;
+    this.connectedClients.forEach((client) => {
+      if (client.userId === userId) {
+        client.emit(event, data);
+        emittedCount++;
+      }
+    });
+    if (emittedCount > 0) {
+      this.logger.log(`📡 [EventsGateway] Emitted ${event} to user ${userId} (${emittedCount} client(s))`);
+    }
+  }
+
+  /**
    * Get count of connected clients
    */
   getConnectedCount(): number {

@@ -5,6 +5,7 @@ import { DepositsController } from './deposits/deposits.controller';
 import { WithdrawalsService } from './withdrawals/withdrawals.service';
 import { WithdrawalsController } from './withdrawals/withdrawals.controller';
 import { ActivationModule } from './activation/activation.module';
+import { UsdtDepositsModule } from './usdt-deposits/usdt-deposits.module';
 import { Deposit } from './deposits/entities/deposit.entity';
 import { Withdrawal } from './withdrawals/entities/withdrawal.entity';
 import { UsersModule } from '../users/users.module';
@@ -20,6 +21,7 @@ import { AuthModule } from '../auth/auth.module';
     SystemModule,
     forwardRef(() => AuthModule),
     ActivationModule,
+    UsdtDepositsModule,
   ],
   controllers: [DepositsController, WithdrawalsController],
   providers: [DepositsService, WithdrawalsService],
