@@ -86,4 +86,24 @@ export class UsersService {
     user.tonAddress = tonAddress;
     return this.usersRepository.save(user);
   }
+
+  async activateUser(userId: string): Promise<User> {
+    const user = await this.findOne(userId);
+    
+    if (user.isActivated) {
+      return user; // Already activated
+    }
+
+    user.isActivated = true;
+    user.activatedAt = new Date();
+    return this.usersRepository.save(user);
+  }
+
+  async checkActivationStatus(userId: string): Promise<{ isActivated: boolean; activatedAt: Date | null }> {
+    const user = await this.findOne(userId);
+    return {
+      isActivated: user.isActivated,
+      activatedAt: user.activatedAt,
+    };
+  }
 }
