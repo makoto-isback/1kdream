@@ -34,6 +34,9 @@ export class User {
   @Column({ nullable: true })
   tonAddress: string; // Registered TON address for deposits
 
+  @Column({ default: false })
+  isAdmin: boolean; // Admin access flag
+
   @OneToMany(() => Bet, (bet) => bet.user)
   bets: Bet[];
 

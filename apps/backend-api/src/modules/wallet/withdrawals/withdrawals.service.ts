@@ -132,27 +132,54 @@ export class WithdrawalsService {
     tonTxHash: string,
     adminId: string,
   ): Promise<Withdrawal> {
-    const withdrawal = await this.withdrawalsRepository.findOne({
-      where: { id: withdrawalId },
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!withdrawal) {
-      throw new NotFoundException('Withdrawal not found');
-    }
+    try {
+      const withdrawal = await queryRunner.manager.findOne(Withdrawal, {
+        where: { id: withdrawalId },
+        lock: { mode: 'pessimistic_write' },
+      });
 
-    if (withdrawal.status === WithdrawalStatus.COMPLETED) {
+      if (!withdrawal) {
+        throw new NotFoundException('Withdrawal not found');
+      }
+
+      // Prevent double processing - return early if already completed
+      if (withdrawal.status === WithdrawalStatus.COMPLETED) {
+        await queryRunner.commitTransaction();
+        console.log(`[ADMIN ACTION] Admin ${adminId} attempted to process already-completed withdrawal ${withdrawalId} (idempotent)`);
+        return withdrawal;
+      }
+
+      // Validate state transitions: only pending or processing can be completed
+      if (withdrawal.status === WithdrawalStatus.REJECTED) {
+        throw new BadRequestException('Cannot process a rejected withdrawal');
+      }
+
+      // Valid transitions: PENDING -> COMPLETED or PROCESSING -> COMPLETED
+      if (withdrawal.status !== WithdrawalStatus.PENDING && withdrawal.status !== WithdrawalStatus.PROCESSING) {
+        throw new BadRequestException(`Invalid withdrawal status for processing: ${withdrawal.status}. Expected: pending or processing`);
+      }
+
+      withdrawal.tonTxHash = tonTxHash;
+      withdrawal.status = WithdrawalStatus.COMPLETED;
+      withdrawal.processedAt = new Date();
+      withdrawal.completedAt = new Date();
+      
+      await queryRunner.manager.save(withdrawal);
+      await queryRunner.commitTransaction();
+
+      console.log(`[ADMIN ACTION] Admin ${adminId} processed withdrawal ${withdrawalId} with TX: ${tonTxHash}. Amount: ${withdrawal.kyatAmount} KYAT`);
+
       return withdrawal;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    withdrawal.tonTxHash = tonTxHash;
-    withdrawal.status = WithdrawalStatus.COMPLETED;
-    withdrawal.processedAt = new Date();
-    withdrawal.completedAt = new Date();
-    
-    // Log admin action
-    console.log(`Admin ${adminId} processed withdrawal ${withdrawalId} with TX: ${tonTxHash}`);
-
-    return this.withdrawalsRepository.save(withdrawal);
   }
 
   async rejectWithdrawal(withdrawalId: string, adminId: string): Promise<Withdrawal> {
@@ -171,9 +198,21 @@ export class WithdrawalsService {
         throw new NotFoundException('Withdrawal not found');
       }
 
+      // Prevent double rejection - return early if already rejected
       if (withdrawal.status === WithdrawalStatus.REJECTED) {
         await queryRunner.commitTransaction();
+        console.log(`[ADMIN ACTION] Admin ${adminId} attempted to reject already-rejected withdrawal ${withdrawalId} (idempotent)`);
         return withdrawal;
+      }
+
+      // Validate state transitions: cannot reject completed withdrawals
+      if (withdrawal.status === WithdrawalStatus.COMPLETED) {
+        throw new BadRequestException('Cannot reject a completed withdrawal');
+      }
+
+      // Valid transitions: PENDING -> REJECTED or PROCESSING -> REJECTED
+      if (withdrawal.status !== WithdrawalStatus.PENDING && withdrawal.status !== WithdrawalStatus.PROCESSING) {
+        throw new BadRequestException(`Invalid withdrawal status for rejection: ${withdrawal.status}. Expected: pending or processing`);
       }
 
       // Refund balance (with lock)
@@ -182,18 +221,20 @@ export class WithdrawalsService {
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (user) {
-        user.kyatBalance = Number(user.kyatBalance) + withdrawal.kyatAmount;
-        await queryRunner.manager.save(user);
+      if (!user) {
+        throw new NotFoundException(`User ${withdrawal.userId} not found`);
       }
+
+      user.kyatBalance = Number(user.kyatBalance) + withdrawal.kyatAmount;
+      await queryRunner.manager.save(user);
 
       withdrawal.status = WithdrawalStatus.REJECTED;
       withdrawal.rejectedAt = new Date();
       
-      // Log admin action
-      console.log(`Admin ${adminId} rejected withdrawal ${withdrawalId}. Refunded ${withdrawal.kyatAmount} KYAT.`);
       await queryRunner.manager.save(withdrawal);
       await queryRunner.commitTransaction();
+
+      console.log(`[ADMIN ACTION] Admin ${adminId} rejected withdrawal ${withdrawalId}. Refunded ${withdrawal.kyatAmount} KYAT to user ${withdrawal.userId}. New balance: ${user.kyatBalance}`);
 
       return withdrawal;
     } catch (error) {

@@ -124,9 +124,17 @@ export class DepositsService {
         throw new NotFoundException('Deposit not found');
       }
 
+      // Prevent double confirmation - return early if already confirmed
       if (deposit.status === DepositStatus.CONFIRMED) {
         await queryRunner.commitTransaction();
+        // Log idempotent call
+        console.log(`[ADMIN ACTION] Admin ${adminId} attempted to confirm already-confirmed deposit ${depositId} (idempotent)`);
         return deposit;
+      }
+
+      // Validate state transition
+      if (deposit.status === DepositStatus.FAILED) {
+        throw new BadRequestException('Cannot confirm a failed deposit');
       }
 
       deposit.tonTxHash = tonTxHash;
@@ -138,20 +146,28 @@ export class DepositsService {
         deposit.userId = userId;
       }
 
+      // Validate user exists before crediting
+      if (!deposit.userId) {
+        throw new BadRequestException('Deposit has no associated user. Provide userId parameter.');
+      }
+
       // Add KYAT to user balance (with lock)
       const user = await queryRunner.manager.findOne(User, {
         where: { id: deposit.userId },
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (user) {
-        user.kyatBalance = Number(user.kyatBalance) + deposit.kyatAmount;
-        await queryRunner.manager.save(user);
-        console.log(`Admin ${adminId} confirmed deposit ${depositId}. Credited ${deposit.kyatAmount} KYAT to user ${deposit.userId}.`);
+      if (!user) {
+        throw new NotFoundException(`User ${deposit.userId} not found`);
       }
 
+      user.kyatBalance = Number(user.kyatBalance) + deposit.kyatAmount;
+      await queryRunner.manager.save(user);
+      
       await queryRunner.manager.save(deposit);
       await queryRunner.commitTransaction();
+
+      console.log(`[ADMIN ACTION] Admin ${adminId} confirmed deposit ${depositId}. Credited ${deposit.kyatAmount} KYAT to user ${deposit.userId}. New balance: ${user.kyatBalance}`);
 
       return deposit;
     } catch (error) {
