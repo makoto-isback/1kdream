@@ -1,74 +1,104 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useApi } from '../contexts/ApiContext';
 import { useTranslation } from '../hooks/useTranslation';
+import { useUsdtWallet, kyatToUsdt, getWithdrawalTimeRemaining, formatCountdown } from '../hooks/useUsdtWallet';
+import { useWallet } from '../contexts/WalletContext';
 import './Withdraw.css';
-
-interface Withdrawal {
-  id: string;
-  kyatAmount: number;
-  usdtAmount: number;
-  tonAddress: string;
-  status: string;
-  createdAt: string;
-}
 
 export default function Withdraw() {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
-  const api = useApi();
   const { t } = useTranslation();
+  const { isWalletConnected, walletAddress } = useWallet();
+  const {
+    isActivated,
+    withdrawals,
+    withdrawalLoading,
+    createWithdrawal,
+    refreshWithdrawals,
+  } = useUsdtWallet();
+
   const [kyatAmount, setKyatAmount] = useState('');
   const [tonAddress, setTonAddress] = useState('');
-  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [countdownTimers, setCountdownTimers] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    loadWithdrawals();
-  }, []);
+    // Update countdown timers every second
+    const interval = setInterval(() => {
+      const timers: Record<string, number> = {};
+      withdrawals.forEach((w) => {
+        if (w.status === 'signed' || w.status === 'queued') {
+          timers[w.id] = getWithdrawalTimeRemaining(w.executeAfter);
+        }
+      });
+      setCountdownTimers(timers);
+    }, 1000);
 
-  const loadWithdrawals = async () => {
-    try {
-      const response = await api.get('/withdrawals/my');
-      setWithdrawals(response.data);
-    } catch (error) {
-      console.error('Error loading withdrawals:', error);
-    }
+    return () => clearInterval(interval);
+  }, [withdrawals]);
+
+  // Helper to shorten wallet address
+  const shortenAddress = (address: string | null): string => {
+    if (!address) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   const handleWithdraw = async () => {
+    if (!isWalletConnected) {
+      setError('Please connect wallet first');
+      return;
+    }
+
+    if (!isActivated) {
+      setError('Please activate your account first');
+      return;
+    }
+
     const amount = parseFloat(kyatAmount);
-    if (amount < 5000) {
-      alert('အနည်းဆုံး 5,000 KYAT လိုအပ်ပါသည်');
+    if (!amount || amount < 5000) {
+      setError('Minimum withdrawal is 5,000 KYAT');
       return;
     }
 
     if (user && amount > Number(user.kyatBalance)) {
-      alert('လက်ကျန်ငွေ မလုံလောက်ပါ');
+      setError('Insufficient balance');
       return;
     }
 
-    if (!tonAddress) {
-      alert('TON လိပ်စာ ထည့်သွင်းရန် လိုအပ်ပါသည်');
+    if (!tonAddress || tonAddress.trim() === '') {
+      setError('Please enter TON address');
       return;
     }
 
     setLoading(true);
+    setError(null);
+
     try {
-      await api.post('/withdrawals', {
-        kyatAmount: amount,
-        tonAddress: tonAddress,
-      });
-      alert('ငွေထုတ်မှု တောင်းဆိုမှု အောင်မြင်ပါသည်');
+      await createWithdrawal(amount, tonAddress.trim());
       setKyatAmount('');
       setTonAddress('');
-      await refreshUser();
-      await loadWithdrawals();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'အမှားအယွင်း ဖြစ်ပွားပါသည်');
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Withdrawal failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case 'signed':
+        return 'Pending (1 hour delay)';
+      case 'queued':
+        return 'Processing';
+      case 'sent':
+        return 'Sent';
+      case 'failed':
+        return 'Failed';
+      default:
+        return status;
     }
   };
 
@@ -85,71 +115,134 @@ export default function Withdraw() {
           <span className="balance-value">{user ? Number(user.kyatBalance).toLocaleString() : 0} KYAT</span>
         </div>
 
-        <div className="form-card">
-          <label>{t('withdraw.amount')}</label>
-          <input
-            type="number"
-            className="input"
-            value={kyatAmount}
-            onChange={(e) => setKyatAmount(e.target.value)}
-            placeholder={t('withdraw.minWithdraw')}
-            min="5000"
-          />
-          {kyatAmount && (
-            <div className="usdt-amount">
-              = {Number(kyatAmount) / 5000} USDT
+        {/* Wallet Connection Check */}
+        {!isWalletConnected && (
+          <div className="form-card">
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p style={{ marginBottom: '16px' }}>Connect your TON wallet to withdraw</p>
+              <p style={{ fontSize: '12px', color: '#999' }}>
+                Go to Deposit page to connect wallet
+              </p>
             </div>
-          )}
-          <div className="rate-info">{t('withdraw.rate')}</div>
-        </div>
+          </div>
+        )}
 
-        <div className="form-card">
-          <label>{t('withdraw.tonAddress')}</label>
-          <input
-            type="text"
-            className="input"
-            value={tonAddress}
-            onChange={(e) => setTonAddress(e.target.value)}
-            placeholder="TON address"
-          />
-        </div>
+        {/* Activation Check */}
+        {isWalletConnected && !isActivated && (
+          <div className="form-card">
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p style={{ marginBottom: '16px' }}>Please activate your account first</p>
+              <p style={{ fontSize: '12px', color: '#999' }}>
+                Go to Deposit page to activate (1 TON one-time fee)
+              </p>
+            </div>
+          </div>
+        )}
 
-        <button
-          className="btn btn-primary"
-          onClick={handleWithdraw}
-          disabled={loading || !kyatAmount || !tonAddress}
-        >
-          {loading ? t('common.loading') : t('withdraw.request')}
-        </button>
+        {/* Withdrawal Form */}
+        {isWalletConnected && isActivated && (
+          <>
+            <div className="form-card">
+              <label>{t('withdraw.amount')} (KYAT)</label>
+              <input
+                type="number"
+                className="input"
+                value={kyatAmount}
+                onChange={(e) => setKyatAmount(e.target.value)}
+                placeholder="5000"
+                min="5000"
+                step="1000"
+              />
+              {kyatAmount && (
+                <div className="usdt-amount" style={{ marginTop: '8px', color: '#999' }}>
+                  = {kyatToUsdt(parseFloat(kyatAmount)).toFixed(6)} USDT
+                </div>
+              )}
+              <div className="rate-info" style={{ marginTop: '8px' }}>
+                1 USDT = 5,000 KYAT
+              </div>
+            </div>
 
-        <div className="withdrawals-list">
+            <div className="form-card">
+              <label>{t('withdraw.tonAddress')}</label>
+              <input
+                type="text"
+                className="input"
+                value={tonAddress}
+                onChange={(e) => setTonAddress(e.target.value)}
+                placeholder="Enter TON address"
+              />
+            </div>
+
+            {/* 1 Hour Delay Notice */}
+            <div className="form-card" style={{ background: '#fff3cd', border: '1px solid #ffc107', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '4px' }}>
+                ⏰ Withdrawal Delay
+              </div>
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                Withdrawals are processed after a 1-hour delay for security. Your balance will be deducted immediately.
+              </div>
+            </div>
+
+            {error && (
+              <div style={{ padding: '12px', background: '#ff4444', color: 'white', borderRadius: '8px', marginBottom: '16px' }}>
+                {error}
+              </div>
+            )}
+
+            <button
+              className="btn btn-primary"
+              onClick={handleWithdraw}
+              disabled={loading || withdrawalLoading || !kyatAmount || !tonAddress}
+            >
+              {loading ? t('common.loading') : t('withdraw.request')}
+            </button>
+          </>
+        )}
+
+        {/* Withdrawals List */}
+        <div className="withdrawals-list" style={{ marginTop: '24px' }}>
           <h3>{t('withdraw.myWithdrawals')}</h3>
-          {withdrawals.length === 0 ? (
+          {withdrawalLoading ? (
+            <div className="empty">Loading...</div>
+          ) : withdrawals.length === 0 ? (
             <div className="empty">မှတ်တမ်း မရှိပါ</div>
           ) : (
             <div className="withdrawals">
-              {withdrawals.map((withdrawal) => (
-                <div key={withdrawal.id} className="withdrawal-item">
-                  <div className="withdrawal-info">
-                    <span>{Number(withdrawal.kyatAmount).toLocaleString()} KYAT</span>
-                    <span>= {Number(withdrawal.usdtAmount).toFixed(4)} USDT</span>
-                  </div>
-                  <div className="withdrawal-details">
-                    <div className="address">{withdrawal.tonAddress}</div>
-                    <div className="withdrawal-status">
-                      <span className={`status status-${withdrawal.status}`}>
-                        {withdrawal.status === 'pending' ? t('withdraw.pending') :
-                         withdrawal.status === 'processing' ? t('withdraw.processing') :
-                         withdrawal.status === 'completed' ? t('withdraw.completed') :
-                         t('withdraw.rejected')}
-                      </span>
-                      <span className="date">
-                        {new Date(withdrawal.createdAt).toLocaleDateString('my-MM')}
-                      </span>
+              {withdrawals.map((withdrawal) => {
+                const remaining = countdownTimers[withdrawal.id] || getWithdrawalTimeRemaining(withdrawal.executeAfter);
+                const showCountdown = (withdrawal.status === 'signed' || withdrawal.status === 'queued') && remaining > 0;
+
+                return (
+                  <div key={withdrawal.id} className="withdrawal-item">
+                    <div className="withdrawal-info">
+                      <span>{Number(withdrawal.kyatAmount).toLocaleString()} KYAT</span>
+                      <span>= {Number(withdrawal.usdtAmount).toFixed(6)} USDT</span>
+                    </div>
+                    <div className="withdrawal-details">
+                      <div className="address">{withdrawal.tonAddress}</div>
+                      {showCountdown && (
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ff9800', marginTop: '4px' }}>
+                          ⏰ {formatCountdown(remaining)}
+                        </div>
+                      )}
+                      <div className="withdrawal-status">
+                        <span className={`status status-${withdrawal.status}`}>
+                          {getStatusLabel(withdrawal.status)}
+                        </span>
+                        <span className="date">
+                          {new Date(withdrawal.createdAt).toLocaleDateString('my-MM')}
+                        </span>
+                      </div>
+                      {withdrawal.tonTxHash && (
+                        <div style={{ fontSize: '10px', color: '#666', marginTop: '4px' }}>
+                          TX: {withdrawal.tonTxHash.slice(0, 8)}...
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -157,4 +250,3 @@ export default function Withdraw() {
     </div>
   );
 }
-
