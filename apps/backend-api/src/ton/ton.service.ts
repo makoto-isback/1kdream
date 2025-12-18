@@ -19,7 +19,7 @@ export class TonService implements OnModuleInit {
   constructor(private configService: ConfigService) {
     this.walletAddress = this.configService.get('TON_WALLET_ADDRESS') || '';
     this.network = this.configService.get('TON_NETWORK') || 'mainnet';
-    this.tonApiUrl = this.configService.get('TON_API_URL') || 'https://tonapi.io/v2';
+    this.tonApiUrl = this.configService.get('TON_API_URL') || 'https://toncenter.com/api/v3';
     this.seedPhrase = this.configService.get('TON_SEED_PHRASE') || null;
     // Get and trim API key once
     const apiKey = this.configService.get('TON_API_KEY');
@@ -28,13 +28,13 @@ export class TonService implements OnModuleInit {
 
   /**
    * Get TON API request headers with authentication
-   * Returns headers with Authorization Bearer token if API key is available
+   * Returns headers with X-API-Key header (TON Center API v3 format)
    */
   private getTonApiHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
     
     if (this.tonApiKey) {
-      headers['Authorization'] = `Bearer ${this.tonApiKey}`;
+      headers['X-API-Key'] = this.tonApiKey;
     }
     
     return headers;
@@ -146,23 +146,26 @@ export class TonService implements OnModuleInit {
       const address = Address.parse(this.walletAddress);
       const addressString = address.toString({ urlSafe: true, bounceable: false });
 
-      // Query TON API for transactions
-      const response = await axios.get(`${this.tonApiUrl}/blockchain/accounts/${addressString}/transactions`, {
+      // Query TON Center API v3 for transactions
+      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
         params: {
+          address: addressString,
           limit: 100,
-          ...(since && { start_lt: since }),
+          ...(since && { lt: since }),
         },
         headers: this.getTonApiHeaders(),
       });
 
-      const transactions = response.data?.transactions || [];
+      const transactions = response.data?.result || [];
       
       // Filter for incoming transfers (where our address is the destination)
+      // TON Center API v3 structure: transaction.in_msg.destination
       const incomingTransfers = transactions.filter((tx: any) => {
         const inMsg = tx.in_msg;
         if (!inMsg) return false;
         
-        const dest = inMsg.destination?.address;
+        // TON Center API v3: destination can be in different formats
+        const dest = inMsg.destination?.address || inMsg.destination;
         if (!dest) return false;
         
         // Check if destination matches our wallet address
@@ -185,19 +188,20 @@ export class TonService implements OnModuleInit {
    * Parse transaction comment/memo from TON transfer
    * TON transfers can include a comment in the message body
    * Format: op code (4 bytes) + comment (UTF-8 string)
+   * TON Center API v3 structure may differ from tonapi.io
    */
   parseTransactionComment(transaction: any): string | null {
     try {
       const inMsg = transaction.in_msg;
       if (!inMsg) return null;
 
-      // TON message can have text comment in msg_data
+      // TON Center API v3: Check for text comment in msg_data
       // Check for text format first
       if (inMsg.msg_data?.text) {
         return inMsg.msg_data.text.trim() || null;
       }
 
-      // Otherwise, check body format
+      // Check for body format (base64 encoded)
       const msgBody = inMsg.msg_data?.body;
       if (!msgBody) return null;
 
@@ -233,6 +237,7 @@ export class TonService implements OnModuleInit {
 
   /**
    * Parse TON amount from transaction
+   * TON Center API v3: value is in nanotons
    */
   parseTonAmount(transaction: any): number {
     try {
@@ -240,8 +245,10 @@ export class TonService implements OnModuleInit {
       if (!inMsg) return 0;
 
       // TON amounts are in nanotons (1 TON = 1e9 nanotons)
-      const value = inMsg.value || '0';
-      return parseFloat(value) / 1e9; // Convert to TON
+      // TON Center API v3: value can be string or number
+      const value = inMsg.value || inMsg.amount || '0';
+      const nanotons = typeof value === 'string' ? parseFloat(value) : value;
+      return nanotons / 1e9; // Convert to TON
     } catch (error) {
       this.logger.error('[TON DEPOSIT] Error parsing TON amount:', error);
       return 0;
@@ -264,13 +271,13 @@ export class TonService implements OnModuleInit {
       const tx = await this.getTransaction(txHash);
       if (!tx) return 0;
 
-      // Get current block height
-      const currentBlockResponse = await axios.get(`${this.tonApiUrl}/blockchain/masterchain-head`, {
+      // Get current block height (TON Center API v3)
+      const currentBlockResponse = await axios.get(`${this.tonApiUrl}/getMasterchainInfo`, {
         headers: this.getTonApiHeaders(),
       });
 
-      const currentBlock = currentBlockResponse.data?.seqno || 0;
-      const txBlock = tx.block?.seqno || 0;
+      const currentBlock = currentBlockResponse.data?.result?.last?.seqno || 0;
+      const txBlock = tx.transaction?.block_id?.seqno || 0;
 
       return Math.max(0, currentBlock - txBlock);
     } catch (error) {
@@ -310,23 +317,23 @@ export class TonService implements OnModuleInit {
       const address = Address.parse(this.walletAddress);
       const addressString = address.toString({ urlSafe: true, bounceable: false });
 
-      // Query TON API for jetton transfers
+      // Query TON Center API v3 for jetton transfers
       // USDT on TON is a jetton with specific master address
       const usdtJettonMaster = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs'; // USDT Jetton Master on mainnet
       
-      const response = await axios.get(`${this.tonApiUrl}/accounts/${addressString}/jettons`, {
+      const response = await axios.get(`${this.tonApiUrl}/jetton/transfers`, {
         params: {
+          address: addressString,
+          jetton: usdtJettonMaster,
           limit: 100,
-          ...(since && { start_lt: since }),
+          ...(since && { lt: since }),
         },
         headers: this.getTonApiHeaders(),
       });
 
-      // Filter for USDT jetton transfers
-      const transfers = response.data?.balances || [];
-      const usdtTransfers = transfers.filter(
-        (transfer: any) => transfer.jetton?.address === usdtJettonMaster
-      );
+      // TON Center API v3 returns transfers directly
+      const transfers = response.data?.result || [];
+      const usdtTransfers = transfers;
 
       return usdtTransfers;
     } catch (error) {
@@ -349,10 +356,15 @@ export class TonService implements OnModuleInit {
     }
 
     try {
-      const response = await axios.get(`${this.tonApiUrl}/blockchain/transactions/${txHash}`, {
+      // TON Center API v3: Get transaction by hash
+      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
+        params: {
+          hash: txHash,
+        },
         headers: this.getTonApiHeaders(),
       });
-      return response.data;
+      // TON Center API v3 wraps result in result field
+      return response.data?.result?.[0] || response.data;
     } catch (error) {
       this.logger.error(`Error getting transaction ${txHash}:`, error);
       return null;
