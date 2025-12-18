@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import WebApp from '@twa-dev/sdk';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { WalletProvider } from './contexts/WalletContext';
 import LotteryPage from './pages/LotteryPage';
 import './styles/index.css';
 
@@ -63,12 +64,14 @@ function App() {
 
   return (
     <AuthProvider>
-      {isDev && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-ios-yellow text-black text-center py-1 text-xs font-bold">
-          🔧 DEV MODE - Mock Telegram User
-        </div>
-      )}
-      <AppContent />
+      <WalletProvider>
+        {isDev && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-ios-yellow text-black text-center py-1 text-xs font-bold">
+            🔧 DEV MODE - Mock Telegram User
+          </div>
+        )}
+        <AppContent />
+      </WalletProvider>
     </AuthProvider>
   );
 }
