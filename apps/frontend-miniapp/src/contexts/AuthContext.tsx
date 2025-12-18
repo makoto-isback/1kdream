@@ -26,6 +26,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const isDev = import.meta.env.DEV;
       
+      // TEMP DEBUG: Log Telegram availability
+      console.log('[TG AUTH] window.Telegram =', typeof window !== 'undefined' ? (window as any).Telegram : 'undefined');
+      console.log('[TG AUTH] window.Telegram.WebApp =', typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : 'undefined');
+      console.log('[TG AUTH] initData exists =', Boolean(typeof window !== 'undefined' && (window as any).Telegram?.WebApp?.initData));
+      
       // Detect Telegram Mini App
       const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
       const initData = tg?.initData;
@@ -36,11 +41,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.warn('🔧 DEV MODE: Telegram WebApp not available, using mock user');
           const mockInitData = 'user=%7B%22id%22%3A123456789%7D&auth_date=' + Math.floor(Date.now() / 1000) + '&hash=mock-hash-dev';
           
+          console.log('[TG AUTH] 🚀 Sending initData to backend /auth/telegram');
           const response = await api.post('/auth/telegram', { initData: mockInitData });
+          console.log('[TG AUTH] ✅ Backend responded, JWT received');
+          
           const token = response.data.accessToken || response.data.access_token;
           if (token) {
             localStorage.setItem('token', token);
-            console.log('JWT saved');
+            console.log('[TG AUTH] 🔐 JWT saved to localStorage');
             const userData = response.data.user;
             if (userData) {
               setUser(userData);
@@ -51,21 +59,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         } else {
           // Production: Telegram WebApp required
-          console.error('Telegram Mini App required: initData not found');
+          console.error('[TG AUTH] ❌ initData missing — app NOT running inside Telegram WebApp');
           setAuthError('TELEGRAM_WEBAPP_REQUIRED');
           return;
         }
       }
 
       // Use Telegram initData directly
-      console.log('Telegram initData detected');
+      console.log('[TG AUTH] 🚀 Sending initData to backend /auth/telegram');
       
       const response = await api.post('/auth/telegram', { initData });
+      console.log('[TG AUTH] ✅ Backend responded, JWT received');
+      
       const token = response.data.accessToken || response.data.access_token;
       
       if (token) {
         localStorage.setItem('token', token);
-        console.log('JWT saved');
+        console.log('[TG AUTH] 🔐 JWT saved to localStorage');
         const userData = response.data.user;
         if (userData) {
           setUser(userData);
@@ -75,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // Connect Socket.IO after successful login (singleton - only connects if not already connected)
         socketService.connect(token);
       } else {
-        console.error('Auth failed: No access token in response');
+        console.error('[TG AUTH] Auth failed: No access token in response');
         setAuthError('Authentication failed: No token received');
       }
     } catch (error: any) {
