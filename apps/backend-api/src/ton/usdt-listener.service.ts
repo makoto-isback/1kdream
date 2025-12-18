@@ -18,11 +18,20 @@ export class UsdtListenerService implements OnModuleInit {
 
   onModuleInit() {
     const isDev = this.configService.get('NODE_ENV') === 'development';
+    const usdtDepositsEnabled = this.configService.get('USDT_ENABLE_DEPOSITS') === 'true';
+
     if (isDev) {
       this.logger.warn('🔧 Development mode: TON USDT listener is DISABLED');
       this.logger.warn('📝 Use admin endpoints to manually confirm deposits');
       return;
     }
+
+    if (!usdtDepositsEnabled) {
+      this.logger.warn('🔧 USDT deposit listener is DISABLED (USDT_ENABLE_DEPOSITS !== true)');
+      this.logger.warn('📝 Use admin endpoints to manually confirm deposits');
+      return;
+    }
+
     this.startListening();
   }
 
@@ -31,6 +40,12 @@ export class UsdtListenerService implements OnModuleInit {
    */
   @Cron('*/30 * * * * *') // Every 30 seconds
   async checkForDeposits() {
+    // Guard: Skip if USDT deposits are disabled
+    const usdtDepositsEnabled = this.configService.get('USDT_ENABLE_DEPOSITS') === 'true';
+    if (!usdtDepositsEnabled) {
+      return; // Silently skip if disabled
+    }
+
     try {
       this.logger.debug('Checking for new USDT deposits...');
       

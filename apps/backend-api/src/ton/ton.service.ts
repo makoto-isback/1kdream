@@ -129,6 +129,13 @@ export class TonService implements OnModuleInit {
    * Detects native TON coin transfers (not USDT)
    */
   async checkTonTransfers(since?: number): Promise<any[]> {
+    // Guard: Skip if TON deposits are disabled
+    const tonDepositsEnabled = this.configService.get('TON_ENABLE_DEPOSITS') === 'true';
+    if (!tonDepositsEnabled) {
+      this.logger.debug('[TON DEPOSIT] TON API calls disabled (TON_ENABLE_DEPOSITS !== true). Skipping checkTonTransfers().');
+      return [];
+    }
+
     try {
       if (!this.walletAddress) {
         this.logger.warn('[TON DEPOSIT] TON wallet address not configured');
@@ -246,6 +253,13 @@ export class TonService implements OnModuleInit {
    * Returns number of blocks since transaction
    */
   async getTransactionConfirmations(txHash: string): Promise<number> {
+    // Guard: Skip if TON deposits are disabled
+    const tonDepositsEnabled = this.configService.get('TON_ENABLE_DEPOSITS') === 'true';
+    if (!tonDepositsEnabled) {
+      this.logger.debug('[TON DEPOSIT] TON API calls disabled (TON_ENABLE_DEPOSITS !== true). Skipping getTransactionConfirmations().');
+      return 0;
+    }
+
     try {
       const tx = await this.getTransaction(txHash);
       if (!tx) return 0;
@@ -279,6 +293,13 @@ export class TonService implements OnModuleInit {
    * USDT on TON uses Jetton standard
    */
   async checkUsdtTransfers(since?: number): Promise<any[]> {
+    // Guard: Skip if USDT deposits are disabled
+    const usdtDepositsEnabled = this.configService.get('USDT_ENABLE_DEPOSITS') === 'true';
+    if (!usdtDepositsEnabled) {
+      this.logger.debug('[USDT] TON API calls disabled (USDT_ENABLE_DEPOSITS !== true). Skipping checkUsdtTransfers().');
+      return [];
+    }
+
     try {
       if (!this.walletAddress) {
         this.logger.warn('TON wallet address not configured');
@@ -318,6 +339,15 @@ export class TonService implements OnModuleInit {
    * Get transaction details for a specific hash
    */
   async getTransaction(txHash: string): Promise<any> {
+    // Guard: Skip if both TON and USDT deposits are disabled
+    const tonDepositsEnabled = this.configService.get('TON_ENABLE_DEPOSITS') === 'true';
+    const usdtDepositsEnabled = this.configService.get('USDT_ENABLE_DEPOSITS') === 'true';
+    
+    if (!tonDepositsEnabled && !usdtDepositsEnabled) {
+      this.logger.debug('[TON API] TON API calls disabled (both TON_ENABLE_DEPOSITS and USDT_ENABLE_DEPOSITS are not true). Skipping getTransaction().');
+      return null;
+    }
+
     try {
       const response = await axios.get(`${this.tonApiUrl}/blockchain/transactions/${txHash}`, {
         headers: this.getTonApiHeaders(),
