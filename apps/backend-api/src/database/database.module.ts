@@ -6,6 +6,8 @@ import { Bet } from '../modules/bets/entities/bet.entity';
 import { LotteryRound } from '../modules/lottery/entities/lottery-round.entity';
 import { Deposit } from '../modules/wallet/deposits/entities/deposit.entity';
 import { Withdrawal } from '../modules/wallet/withdrawals/entities/withdrawal.entity';
+import { UsdtDeposit } from '../modules/wallet/usdt-deposits/entities/usdt-deposit.entity';
+import { UsdtWithdrawal } from '../modules/wallet/usdt-withdrawals/entities/usdt-withdrawal.entity';
 import { AutoBetPlan } from '../modules/autobet/entities/autobet-plan.entity';
 import { PointsRedemption } from '../modules/points/entities/points-redemption.entity';
 import { SystemSettings } from '../modules/system/entities/system-settings.entity';
@@ -28,6 +30,8 @@ import { SystemSettings } from '../modules/system/entities/system-settings.entit
           LotteryRound,
           Deposit,
           Withdrawal,
+          UsdtDeposit,
+          UsdtWithdrawal,
           AutoBetPlan,
           PointsRedemption,
           SystemSettings,

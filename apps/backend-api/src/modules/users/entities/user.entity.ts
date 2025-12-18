@@ -37,6 +37,12 @@ export class User {
   @Column({ default: false })
   isAdmin: boolean; // Admin access flag
 
+  @Column({ default: false })
+  isActivated: boolean; // One-time 1 TON activation fee paid
+
+  @Column('timestamp', { nullable: true })
+  activatedAt: Date; // When user paid activation fee
+
   @OneToMany(() => Bet, (bet) => bet.user)
   bets: Bet[];
 
