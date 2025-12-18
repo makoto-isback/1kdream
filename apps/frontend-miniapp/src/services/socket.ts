@@ -11,6 +11,32 @@ export interface RoundCompletedEvent {
   timestamp: string;
 }
 
+export interface UsdtDepositConfirmedEvent {
+  depositId: string;
+  usdtAmount: number;
+  kyatAmount: number;
+  txHash: string;
+  createdAt: string;
+}
+
+export interface UsdtWithdrawalCreatedEvent {
+  withdrawalId: string;
+  kyatAmount: number;
+  usdtAmount: number;
+  tonAddress: string;
+  executeAfter: string;
+  createdAt: string;
+}
+
+export interface UsdtWithdrawalSentEvent {
+  withdrawalId: string;
+  kyatAmount: number;
+  usdtAmount: number;
+  tonAddress: string;
+  tonTxHash: string;
+  sentAt: string;
+}
+
 type PendingSubscription = {
   event: string;
   handler: (...args: any[]) => void;
@@ -275,6 +301,80 @@ class SocketService {
    */
   isConnected(): boolean {
     return this.socket?.connected || false;
+  }
+
+  /**
+   * Subscribe to usdt_deposit_confirmed events
+   */
+  onUsdtDepositConfirmed(callback: (data: UsdtDepositConfirmedEvent) => void): () => void {
+    const event = 'usdt_deposit_confirmed';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Subscribe to usdt_withdrawal_created events
+   */
+  onUsdtWithdrawalCreated(callback: (data: UsdtWithdrawalCreatedEvent) => void): () => void {
+    const event = 'usdt_withdrawal_created';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Subscribe to usdt_withdrawal_sent events
+   */
+  onUsdtWithdrawalSent(callback: (data: UsdtWithdrawalSentEvent) => void): () => void {
+    const event = 'usdt_withdrawal_sent';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Generic event subscription helper
+   */
+  private subscribeToEvent(event: string, callback: (...args: any[]) => void): () => void {
+    const eventHandler = (data: any) => {
+      console.log(`🔌 [Socket] 🎯 RECEIVED ${event} event`, data);
+      callback(data);
+    };
+
+    if (this.socket?.connected && this.isAuthenticated) {
+      if (this.activeSubscriptions.has(event)) {
+        const activeHandlers = this.activeSubscriptions.get(event)!;
+        if (activeHandlers.has(eventHandler)) {
+          return () => this.unsubscribe(event, eventHandler);
+        }
+      }
+
+      if (!this.activeSubscriptions.has(event)) {
+        this.activeSubscriptions.set(event, new Set());
+      }
+      this.activeSubscriptions.get(event)!.add(eventHandler);
+      this.socket.on(event, eventHandler);
+
+      return () => this.unsubscribe(event, eventHandler);
+    }
+
+    // Queue subscription
+    if (!this.pendingSubscriptions.has(event)) {
+      this.pendingSubscriptions.set(event, new Set());
+    }
+
+    const pendingSub: PendingSubscription = {
+      event,
+      handler: eventHandler,
+      unsubscribe: () => {
+        const pending = this.pendingSubscriptions.get(event);
+        if (pending) {
+          pending.delete(pendingSub);
+          if (pending.size === 0) {
+            this.pendingSubscriptions.delete(event);
+          }
+        }
+        this.unsubscribe(event, eventHandler);
+      },
+    };
+
+    this.pendingSubscriptions.get(event)!.add(pendingSub);
+    return pendingSub.unsubscribe;
   }
 
   /**
