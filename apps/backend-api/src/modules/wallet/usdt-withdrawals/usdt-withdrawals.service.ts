@@ -10,11 +10,15 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { EventsGateway } from '../../../gateways/events.gateway';
 
 const KYAT_PER_USDT = 5000;
-const MIN_WITHDRAWAL_KYAT = 5000; // 1 USDT minimum
 
 @Injectable()
 export class UsdtWithdrawalsService {
   private readonly logger = new Logger(UsdtWithdrawalsService.name);
+
+  // Config-based limits (with defaults)
+  private readonly MIN_WITHDRAW_USDT: number;
+  private readonly MAX_WITHDRAW_PER_HOUR_USDT: number;
+  private readonly MAX_WITHDRAW_PER_DAY_USDT: number;
 
   constructor(
     @InjectRepository(UsdtWithdrawal)
@@ -25,7 +29,12 @@ export class UsdtWithdrawalsService {
     @InjectDataSource()
     private dataSource: DataSource,
     private eventsGateway: EventsGateway,
-  ) {}
+  ) {
+    // Load limits from config with defaults
+    this.MIN_WITHDRAW_USDT = parseFloat(this.configService.get('MIN_WITHDRAW_USDT') || '5');
+    this.MAX_WITHDRAW_PER_HOUR_USDT = parseFloat(this.configService.get('MAX_WITHDRAW_PER_HOUR_USDT') || '500');
+    this.MAX_WITHDRAW_PER_DAY_USDT = parseFloat(this.configService.get('MAX_WITHDRAW_PER_DAY_USDT') || '2000');
+  }
 
   /**
    * Create withdrawal request (deduct balance immediately)
@@ -54,9 +63,14 @@ export class UsdtWithdrawalsService {
         throw new BadRequestException('User must be activated before withdrawing');
       }
 
-      // Validate amount
-      if (kyatAmount < MIN_WITHDRAWAL_KYAT) {
-        throw new BadRequestException(`Minimum withdrawal is ${MIN_WITHDRAWAL_KYAT} KYAT`);
+      // Convert KYAT to USDT (backend calculation)
+      const usdtAmount = kyatAmount / KYAT_PER_USDT;
+
+      // Validate minimum withdrawal amount
+      if (usdtAmount < this.MIN_WITHDRAW_USDT) {
+        throw new BadRequestException(
+          `Minimum withdrawal is ${this.MIN_WITHDRAW_USDT} USDT (${this.MIN_WITHDRAW_USDT * KYAT_PER_USDT} KYAT)`,
+        );
       }
 
       // Check balance
@@ -69,8 +83,54 @@ export class UsdtWithdrawalsService {
         throw new BadRequestException('Invalid TON address');
       }
 
-      // Convert KYAT to USDT (backend calculation)
-      const usdtAmount = kyatAmount / KYAT_PER_USDT;
+      // Check withdrawal limits (last 1 hour and last 24 hours)
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      // Get withdrawals in the last hour (status: signed, queued, or sent)
+      const withdrawalsLastHour = await queryRunner.manager
+        .createQueryBuilder(UsdtWithdrawal, 'w')
+        .where('w.userId = :userId', { userId })
+        .andWhere('w.createdAt >= :oneHourAgo', { oneHourAgo })
+        .andWhere('w.status IN (:...statuses)', {
+          statuses: [UsdtWithdrawalStatus.SIGNED, UsdtWithdrawalStatus.QUEUED, UsdtWithdrawalStatus.SENT],
+        })
+        .getMany();
+
+      const totalUsdtLastHour = withdrawalsLastHour.reduce((sum, w) => sum + w.usdtAmount, 0);
+      const totalUsdtAfterThisWithdrawal = totalUsdtLastHour + usdtAmount;
+
+      if (totalUsdtAfterThisWithdrawal > this.MAX_WITHDRAW_PER_HOUR_USDT) {
+        const remaining = Math.max(0, this.MAX_WITHDRAW_PER_HOUR_USDT - totalUsdtLastHour);
+        throw new BadRequestException(
+          `Withdrawal limit exceeded: Maximum ${this.MAX_WITHDRAW_PER_HOUR_USDT} USDT per hour. ` +
+            `You have withdrawn ${totalUsdtLastHour.toFixed(6)} USDT in the last hour. ` +
+            `Maximum remaining: ${remaining.toFixed(6)} USDT`,
+        );
+      }
+
+      // Get withdrawals in the last 24 hours (status: signed, queued, or sent)
+      const withdrawalsLastDay = await queryRunner.manager
+        .createQueryBuilder(UsdtWithdrawal, 'w')
+        .where('w.userId = :userId', { userId })
+        .andWhere('w.createdAt >= :oneDayAgo', { oneDayAgo })
+        .andWhere('w.status IN (:...statuses)', {
+          statuses: [UsdtWithdrawalStatus.SIGNED, UsdtWithdrawalStatus.QUEUED, UsdtWithdrawalStatus.SENT],
+        })
+        .getMany();
+
+      const totalUsdtLastDay = withdrawalsLastDay.reduce((sum, w) => sum + w.usdtAmount, 0);
+      const totalUsdtAfterThisWithdrawalDay = totalUsdtLastDay + usdtAmount;
+
+      if (totalUsdtAfterThisWithdrawalDay > this.MAX_WITHDRAW_PER_DAY_USDT) {
+        const remaining = Math.max(0, this.MAX_WITHDRAW_PER_DAY_USDT - totalUsdtLastDay);
+        throw new BadRequestException(
+          `Withdrawal limit exceeded: Maximum ${this.MAX_WITHDRAW_PER_DAY_USDT} USDT per day. ` +
+            `You have withdrawn ${totalUsdtLastDay.toFixed(6)} USDT in the last 24 hours. ` +
+            `Maximum remaining: ${remaining.toFixed(6)} USDT`,
+        );
+      }
 
       // Deduct balance immediately
       user.kyatBalance = Number(user.kyatBalance) - kyatAmount;

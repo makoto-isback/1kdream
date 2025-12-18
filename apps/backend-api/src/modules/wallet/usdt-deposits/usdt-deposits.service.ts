@@ -18,6 +18,9 @@ const USDT_JETTON_MASTER = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs'; /
 export class UsdtDepositsService {
   private readonly logger = new Logger(UsdtDepositsService.name);
 
+  // Config-based limits (with defaults)
+  private readonly MAX_DEPOSIT_USDT: number;
+
   constructor(
     @InjectRepository(UsdtDeposit)
     private usdtDepositsRepository: Repository<UsdtDeposit>,
@@ -27,7 +30,10 @@ export class UsdtDepositsService {
     @InjectDataSource()
     private dataSource: DataSource,
     private eventsGateway: EventsGateway,
-  ) {}
+  ) {
+    // Load limits from config with defaults
+    this.MAX_DEPOSIT_USDT = parseFloat(this.configService.get('MAX_DEPOSIT_USDT') || '1000');
+  }
 
   /**
    * Verify USDT jetton transfer on-chain and process deposit
@@ -68,6 +74,13 @@ export class UsdtDepositsService {
 
       // Convert KYAT to USDT (backend calculation only)
       const expectedUsdtAmount = expectedKyatAmount / KYAT_PER_USDT;
+
+      // Validate deposit limit (before on-chain verification to save API calls)
+      if (expectedUsdtAmount > this.MAX_DEPOSIT_USDT) {
+        throw new BadRequestException(
+          `Maximum deposit is ${this.MAX_DEPOSIT_USDT} USDT (${this.MAX_DEPOSIT_USDT * KYAT_PER_USDT} KYAT)`,
+        );
+      }
 
       // Verify transaction on-chain
       const verification = await this.verifyUsdtTransfer(
@@ -212,6 +225,14 @@ export class UsdtDepositsService {
 
       // Parse USDT amount (6 decimals)
       const actualUsdtAmount = this.tonService.parseUsdtAmount(transfer);
+
+      // Validate actual amount against limit (double-check after on-chain verification)
+      if (actualUsdtAmount > this.MAX_DEPOSIT_USDT) {
+        return {
+          valid: false,
+          reason: `Deposit amount ${actualUsdtAmount} USDT exceeds maximum limit of ${this.MAX_DEPOSIT_USDT} USDT`,
+        };
+      }
 
       if (actualUsdtAmount < expectedUsdtAmount * 0.99) {
         // Allow 1% variance
