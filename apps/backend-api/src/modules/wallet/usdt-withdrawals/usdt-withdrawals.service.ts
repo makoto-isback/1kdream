@@ -189,33 +189,67 @@ export class UsdtWithdrawalsService {
       await queryRunner.commitTransaction();
 
       // Send USDT on-chain (outside transaction to avoid long locks)
-      // Note: Actual implementation would use TonService.sendUsdt() or similar
-      // For now, we'll simulate the transaction
-      const txHash = await this.sendUsdtOnChain(
-        withdrawal.tonAddress,
-        withdrawal.usdtAmount,
-      );
+      let txHash: string;
+      try {
+        txHash = await this.sendUsdtOnChain(
+          withdrawal.tonAddress,
+          withdrawal.usdtAmount,
+        );
+      } catch (error) {
+        // On failure, revert status to SIGNED for retry
+        withdrawal.status = UsdtWithdrawalStatus.SIGNED;
+        await this.usdtWithdrawalsRepository.save(withdrawal);
+        this.logger.error(
+          `[USDT WITHDRAWAL] Failed to send USDT for withdrawal ${withdrawalId}. Status reverted to SIGNED for retry.`,
+        );
+        throw error; // Re-throw to be caught by processPendingWithdrawals
+      }
 
-      // Update withdrawal with tx hash and mark as sent
-      withdrawal.status = UsdtWithdrawalStatus.SENT;
-      withdrawal.tonTxHash = txHash;
-      await this.usdtWithdrawalsRepository.save(withdrawal);
+      // Update withdrawal with tx hash and mark as sent (in new transaction)
+      const updateRunner = this.dataSource.createQueryRunner();
+      await updateRunner.connect();
+      await updateRunner.startTransaction();
 
-      this.logger.log(
-        `[USDT WITHDRAWAL] Executed withdrawal ${withdrawalId}: ${withdrawal.usdtAmount} USDT sent to ${withdrawal.tonAddress} (tx: ${txHash})`,
-      );
+      try {
+        const updatedWithdrawal = await updateRunner.manager.findOne(UsdtWithdrawal, {
+          where: { id: withdrawalId },
+          lock: { mode: 'pessimistic_write' },
+        });
 
-      // Emit socket event
-      this.eventsGateway.emitToUser(withdrawal.userId, 'usdt_withdrawal_sent', {
-        withdrawalId: withdrawal.id,
-        kyatAmount: withdrawal.kyatAmount,
-        usdtAmount: withdrawal.usdtAmount,
-        tonAddress: withdrawal.tonAddress,
-        tonTxHash: txHash,
-        sentAt: new Date(),
-      });
+        if (updatedWithdrawal) {
+          updatedWithdrawal.status = UsdtWithdrawalStatus.SENT;
+          updatedWithdrawal.tonTxHash = txHash;
+          await updateRunner.manager.save(updatedWithdrawal);
+          await updateRunner.commitTransaction();
+
+          this.logger.log(
+            `[USDT WITHDRAWAL] Executed withdrawal ${withdrawalId}: ${updatedWithdrawal.usdtAmount} USDT sent to ${updatedWithdrawal.tonAddress} (tx: ${txHash})`,
+          );
+
+          // Emit socket event
+          this.eventsGateway.emitToUser(updatedWithdrawal.userId, 'usdt_withdrawal_sent', {
+            withdrawalId: updatedWithdrawal.id,
+            kyatAmount: updatedWithdrawal.kyatAmount,
+            usdtAmount: updatedWithdrawal.usdtAmount,
+            tonAddress: updatedWithdrawal.tonAddress,
+            tonTxHash: txHash,
+            sentAt: new Date(),
+          });
+        } else {
+          await updateRunner.rollbackTransaction();
+        }
+      } catch (updateError) {
+        await updateRunner.rollbackTransaction();
+        this.logger.error(`[USDT WITHDRAWAL] Error updating withdrawal ${withdrawalId}:`, updateError);
+        throw updateError;
+      } finally {
+        await updateRunner.release();
+      }
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      // Only rollback if transaction is still active (before commit)
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
       this.logger.error(`[USDT WITHDRAWAL] Error executing withdrawal:`, error);
       throw error;
     } finally {
@@ -224,23 +258,30 @@ export class UsdtWithdrawalsService {
   }
 
   /**
-   * Send USDT on-chain (placeholder - implement with actual TON wallet)
+   * Send USDT on-chain using TonService
    */
   private async sendUsdtOnChain(toAddress: string, usdtAmount: number): Promise<string> {
-    // TODO: Implement actual USDT jetton transfer using TonService
-    // For now, return a placeholder hash
-    // In production, this would:
-    // 1. Use platform wallet private key
-    // 2. Create jetton transfer transaction
-    // 3. Sign and broadcast to TON network
-    // 4. Return transaction hash
+    try {
+      // Validate wallet is ready
+      if (!this.tonService.isWalletReadyForUse()) {
+        throw new Error('Platform wallet not ready - check TON_SEED_PHRASE configuration');
+      }
 
-    this.logger.warn(
-      `[USDT WITHDRAWAL] sendUsdtOnChain not fully implemented. Would send ${usdtAmount} USDT to ${toAddress}`,
-    );
+      // Send USDT via TonService
+      const txHash = await this.tonService.sendUsdt(toAddress, usdtAmount);
 
-    // Placeholder - in production, implement actual transfer
-    return `placeholder-tx-hash-${Date.now()}`;
+      this.logger.log(
+        `[USDT WITHDRAWAL] Successfully sent ${usdtAmount} USDT to ${toAddress}. TX: ${txHash}`,
+      );
+
+      return txHash;
+    } catch (error) {
+      this.logger.error(
+        `[USDT WITHDRAWAL] Failed to send ${usdtAmount} USDT to ${toAddress}:`,
+        error,
+      );
+      throw error;
+    }
   }
 
   /**

@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Address } from '@ton/core';
-import { mnemonicToPrivateKey } from '@ton/crypto';
+import { Address, beginCell, Cell, internal, toNano } from '@ton/core';
+import { mnemonicToPrivateKey, KeyPair } from '@ton/crypto';
+import { WalletContractV4 } from '@ton/ton';
 import axios from 'axios';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class TonService implements OnModuleInit {
   private tonApiUrl: string;
   private seedPhrase: string | null = null;
   private derivedWalletAddress: string | null = null;
+  private keyPair: KeyPair | null = null; // Store keypair for signing transactions
   private isInitialized: boolean = false;
   private isWalletReady: boolean = false;
   private tonApiKey: string | null = null;
@@ -69,10 +71,9 @@ export class TonService implements OnModuleInit {
 
       // Derive private key from mnemonic
       const keyPair = await mnemonicToPrivateKey(words);
-
-      // Store the keypair for future use (signing transactions, etc.)
-      // For now, we're just monitoring deposits, so we don't need to derive the address
-      // The address should be provided in TON_WALLET_ADDRESS
+      
+      // Store keypair for signing transactions
+      this.keyPair = keyPair;
       
       // If wallet address is provided, use it
       // Otherwise, we would need to derive it from the public key using wallet contract
@@ -447,24 +448,181 @@ export class TonService implements OnModuleInit {
 
   /**
    * Send USDT via Jetton transfer
-   * Note: This requires wallet implementation with private key
-   * For production, use a secure wallet service
+   * Implements actual on-chain USDT jetton transfer
    */
   async sendUsdt(toAddress: string, amount: number): Promise<string> {
+    if (!this.keyPair) {
+      throw new Error('Wallet not initialized - keypair not available');
+    }
+
+    if (!this.walletAddress) {
+      throw new Error('Platform wallet address not configured');
+    }
+
     try {
-      // In production, this would:
-      // 1. Use TON wallet SDK to create jetton transfer
-      // 2. Sign transaction with private key
-      // 3. Broadcast to TON network
-      // 4. Return transaction hash
-      
-      this.logger.log(`Sending ${amount} USDT to ${toAddress}`);
-      
-      // Placeholder - implement with actual TON wallet
-      // For now, return empty string (manual processing)
-      return '';
+      const USDT_JETTON_MASTER = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs'; // USDT Jetton Master on mainnet
+      const USDT_DECIMALS = 6; // USDT uses 6 decimals
+
+      // Parse addresses
+      const platformAddress = Address.parse(this.walletAddress);
+      const recipientAddress = Address.parse(toAddress);
+      const jettonMasterAddress = Address.parse(USDT_JETTON_MASTER);
+
+      // Get platform wallet contract
+      const wallet = WalletContractV4.create({ workchain: 0, publicKey: this.keyPair.publicKey });
+      const walletAddress = wallet.address;
+
+      // Verify wallet address matches configured address
+      if (!walletAddress.equals(platformAddress)) {
+        this.logger.warn(
+          `[USDT WITHDRAWAL] Wallet address mismatch: derived ${walletAddress.toString()} vs configured ${platformAddress.toString()}`,
+        );
+      }
+
+      // Get jetton wallet address (platform wallet's USDT jetton wallet)
+      const jettonWalletAddress = await this.getJettonWalletAddress(platformAddress, jettonMasterAddress);
+
+      // Convert USDT amount to nano-jettons (6 decimals)
+      const nanoJettons = BigInt(Math.floor(amount * 1e6));
+
+      // Create jetton transfer message
+      const transferMessage = this.createJettonTransferMessage(
+        recipientAddress,
+        nanoJettons,
+        platformAddress, // Response destination (platform wallet)
+      );
+
+      // Create internal message to jetton wallet
+      const internalMessage = internal({
+        to: jettonWalletAddress,
+        value: toNano('0.1'), // 0.1 TON for gas
+        body: transferMessage,
+      });
+
+      // Get wallet seqno
+      const seqno = await this.getWalletSeqno(walletAddress);
+
+      // Create transfer from wallet
+      const transfer = wallet.createTransfer({
+        seqno,
+        secretKey: this.keyPair.secretKey,
+        messages: [internalMessage],
+      });
+
+      // Send transaction
+      const txHash = await this.sendTransaction(transfer);
+
+      this.logger.log(
+        `[USDT WITHDRAWAL] Sent ${amount} USDT to ${toAddress}. Transaction: ${txHash}`,
+      );
+
+      return txHash;
     } catch (error) {
-      this.logger.error('Error sending USDT:', error);
+      this.logger.error(`[USDT WITHDRAWAL] Error sending USDT:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get jetton wallet address for a given wallet and jetton master
+   */
+  private async getJettonWalletAddress(
+    walletAddress: Address,
+    jettonMasterAddress: Address,
+  ): Promise<Address> {
+    try {
+      // Query jetton wallet address from jetton master
+      // TON Center API v3: GET /jetton/wallet?address=<wallet>&jetton=<master>
+      const response = await axios.get(`${this.tonApiUrl}/jetton/wallet`, {
+        params: {
+          address: walletAddress.toString({ urlSafe: true, bounceable: false }),
+          jetton: jettonMasterAddress.toString({ urlSafe: true, bounceable: false }),
+        },
+        headers: this.getTonApiHeaders(),
+      });
+
+      const jettonWalletAddressStr = response.data?.result?.address;
+      if (!jettonWalletAddressStr) {
+        throw new Error('Failed to get jetton wallet address from API');
+      }
+
+      return Address.parse(jettonWalletAddressStr);
+    } catch (error) {
+      this.logger.error('[USDT WITHDRAWAL] Error getting jetton wallet address:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create jetton transfer message
+   */
+  private createJettonTransferMessage(
+    destination: Address,
+    amount: bigint,
+    responseDestination: Address,
+  ): Cell {
+    // Jetton transfer op code: 0xf8a7ea5
+    const OP_JETTON_TRANSFER = 0xf8a7ea5;
+    const queryId = BigInt(Date.now()); // Use timestamp as queryId
+
+    return beginCell()
+      .storeUint(OP_JETTON_TRANSFER, 32) // op code
+      .storeUint(queryId, 64) // queryId
+      .storeCoins(amount) // jetton amount
+      .storeAddress(destination) // destination address
+      .storeAddress(responseDestination) // response destination (for notifications)
+      .storeBit(0) // forward_payload (empty)
+      .storeCoins(0) // forward_ton_amount (0)
+      .endCell();
+  }
+
+  /**
+   * Get wallet sequence number
+   */
+  private async getWalletSeqno(walletAddress: Address): Promise<number> {
+    try {
+      const response = await axios.get(`${this.tonApiUrl}/getAddressInformation`, {
+        params: {
+          address: walletAddress.toString({ urlSafe: true, bounceable: false }),
+        },
+        headers: this.getTonApiHeaders(),
+      });
+
+      return response.data?.result?.seqno || 0;
+    } catch (error) {
+      this.logger.error('[USDT WITHDRAWAL] Error getting wallet seqno:', error);
+      return 0; // Default to 0 if API fails
+    }
+  }
+
+  /**
+   * Send transaction to TON network
+   */
+  private async sendTransaction(transfer: Cell): Promise<string> {
+    try {
+      // Send transaction via TON Center API v3
+      // POST /sendBoc
+      const boc = transfer.toBoc().toString('base64');
+
+      const response = await axios.post(
+        `${this.tonApiUrl}/sendBoc`,
+        { boc },
+        {
+          headers: {
+            ...this.getTonApiHeaders(),
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      const txHash = response.data?.result || response.data?.hash;
+      if (!txHash) {
+        throw new Error('No transaction hash in response');
+      }
+
+      return txHash;
+    } catch (error) {
+      this.logger.error('[USDT WITHDRAWAL] Error sending transaction:', error);
       throw error;
     }
   }
