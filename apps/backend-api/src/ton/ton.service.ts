@@ -146,40 +146,108 @@ export class TonService implements OnModuleInit {
       const address = Address.parse(this.walletAddress);
       const addressString = address.toString({ urlSafe: true, bounceable: false });
 
-      // Query TON Center API v3 for transactions
+      // Query TON Center API v3 for transactions - DO NOT use lt or since
       const response = await axios.get(`${this.tonApiUrl}/transactions`, {
         params: {
           address: addressString,
-          limit: 100,
-          ...(since && { lt: since }),
+          limit: 20,
         },
         headers: this.getTonApiHeaders(),
       });
 
       const transactions = response.data?.result || [];
+      console.log('[TON DEBUG] transactions fetched:', transactions.length);
       
-      // Filter for incoming transfers (where our address is the destination)
-      // TON Center API v3 structure: transaction.in_msg.destination
-      const incomingTransfers = transactions.filter((tx: any) => {
+      // Process each transaction and log details
+      const processedTransactions = [];
+      
+      for (const tx of transactions) {
         const inMsg = tx.in_msg;
-        if (!inMsg) return false;
-        
-        // TON Center API v3: destination can be in different formats
-        const dest = inMsg.destination?.address || inMsg.destination;
-        if (!dest) return false;
-        
-        // Check if destination matches our wallet address
-        try {
-          const destAddress = Address.parse(dest);
-          return destAddress.equals(address);
-        } catch {
-          return false;
+        if (!inMsg) {
+          continue;
         }
-      });
+        
+        // Extract hash
+        const txHash = tx.hash || tx.transaction_id || tx.tx_hash || null;
+        
+        // Extract value (in nanotons)
+        const value = inMsg.value || inMsg.amount || '0';
+        const nanotons = typeof value === 'string' ? parseFloat(value) : value;
+        const tonValue = nanotons / 1e9; // Convert to TON
+        
+        // Extract comment from multiple possible fields
+        let comment: string | null = null;
+        
+        // Try in_msg.message first
+        if (inMsg.message) {
+          comment = typeof inMsg.message === 'string' ? inMsg.message : null;
+        }
+        
+        // Try decoded body text
+        if (!comment && inMsg.msg_data?.text) {
+          comment = inMsg.msg_data.text.trim() || null;
+        }
+        
+        // Try decoding body if available
+        if (!comment && inMsg.msg_data?.body) {
+          try {
+            const msgBody = inMsg.msg_data.body;
+            
+            if (typeof msgBody === 'string') {
+              let bodyBytes: Buffer;
+              try {
+                bodyBytes = Buffer.from(msgBody, 'base64');
+              } catch {
+                try {
+                  bodyBytes = Buffer.from(msgBody, 'hex');
+                } catch {
+                  bodyBytes = Buffer.from(msgBody, 'utf-8');
+                }
+              }
+              
+              // Skip first 4 bytes (op code) if present
+              if (bodyBytes.length > 4) {
+                const commentBytes = bodyBytes.slice(4);
+                comment = commentBytes.toString('utf-8').trim() || null;
+              } else if (bodyBytes.length > 0) {
+                comment = bodyBytes.toString('utf-8').trim() || null;
+              }
+            }
+            // If body is not a string, skip comment parsing (comment remains null)
+          } catch (err) {
+            // Ignore decoding errors
+          }
+        }
+        
+        // Fallback: use empty string if no comment found
+        if (!comment) {
+          comment = '';
+        }
+        
+        // Log transaction details
+        console.log(`[TON DEBUG] tx hash=${txHash} value=${tonValue} comment=${comment}`);
+        
+        // Filter for incoming transfers (where our address is the destination)
+        const dest = inMsg.destination?.address || inMsg.destination;
+        if (dest) {
+          try {
+            const destAddress = Address.parse(dest);
+            if (destAddress.equals(address)) {
+              processedTransactions.push(tx);
+            }
+          } catch {
+            // Invalid address format, skip
+          }
+        }
+      }
 
-      return incomingTransfers;
+      return processedTransactions;
     } catch (error) {
       this.logger.error('[TON DEPOSIT] Error checking TON transfers:', error);
+      if (error.response) {
+        this.logger.error('[TON DEPOSIT] API response status:', error.response.status);
+        this.logger.error('[TON DEPOSIT] API response data:', error.response.data);
+      }
       return [];
     }
   }

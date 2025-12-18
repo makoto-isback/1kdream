@@ -104,13 +104,30 @@ export class TonDepositListenerService implements OnModuleInit {
     try {
       this.logger.debug('[TON DEPOSIT] Checking for new TON deposits...');
       
-      const transactions = await this.tonService.checkTonTransfers(this.lastCheckedTimestamp);
+      // Temporarily disable since parameter - fetch all recent transactions
+      const transactions = await this.tonService.checkTonTransfers();
       
       for (const tx of transactions) {
-        const txHash = tx.hash || tx.tx_hash;
-        if (!txHash) continue;
+        const txHash = tx.hash || tx.transaction_id || tx.tx_hash;
+        if (!txHash) {
+          console.log('[TON DEBUG] Skipping transaction without hash');
+          continue;
+        }
 
-        await this.processDeposit(tx);
+        // TEMPORARY: Just log if transaction exists, don't process yet
+        console.log(`[TON DEBUG] Transaction detected: ${txHash}`);
+        
+        // Check if deposit already exists
+        const existing = await this.depositsService.findByTxHash(txHash);
+        if (existing) {
+          console.log(`[TON DEBUG] Deposit already exists for tx ${txHash}`);
+          continue;
+        }
+        
+        // Log transaction details but don't process yet
+        const tonAmount = this.tonService.parseTonAmount(tx);
+        const comment = this.tonService.parseTransactionComment(tx);
+        console.log(`[TON DEBUG] New transaction: hash=${txHash} amount=${tonAmount} comment=${comment}`);
       }
 
       this.lastCheckedTimestamp = Date.now();
