@@ -353,5 +353,88 @@ export class UsdtWithdrawalsService {
       order: { createdAt: 'DESC' },
     });
   }
+
+  /**
+   * Get all USDT withdrawals (admin only)
+   */
+  async getAllWithdrawals(filters?: {
+    userId?: string;
+    status?: UsdtWithdrawalStatus;
+  }): Promise<UsdtWithdrawal[]> {
+    const queryBuilder = this.usdtWithdrawalsRepository
+      .createQueryBuilder('withdrawal')
+      .leftJoinAndSelect('withdrawal.user', 'user')
+      .orderBy('withdrawal.createdAt', 'DESC');
+
+    if (filters?.userId) {
+      queryBuilder.andWhere('withdrawal.userId = :userId', { userId: filters.userId });
+    }
+
+    if (filters?.status) {
+      queryBuilder.andWhere('withdrawal.status = :status', { status: filters.status });
+    }
+
+    return queryBuilder.getMany();
+  }
+
+  /**
+   * Cancel withdrawal (admin only)
+   * Only allowed if status is SIGNED
+   */
+  async cancelWithdrawal(withdrawalId: string, adminId: string): Promise<UsdtWithdrawal> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const withdrawal = await queryRunner.manager.findOne(UsdtWithdrawal, {
+        where: { id: withdrawalId },
+        lock: { mode: 'pessimistic_write' },
+        relations: ['user'],
+      });
+
+      if (!withdrawal) {
+        throw new NotFoundException('Withdrawal not found');
+      }
+
+      // Only allow cancellation if status is SIGNED
+      if (withdrawal.status !== UsdtWithdrawalStatus.SIGNED) {
+        throw new BadRequestException(
+          `Cannot cancel withdrawal with status ${withdrawal.status}. Only SIGNED withdrawals can be cancelled.`,
+        );
+      }
+
+      // Restore user balance
+      const user = await queryRunner.manager.findOne(User, {
+        where: { id: withdrawal.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      user.kyatBalance = Number(user.kyatBalance) + withdrawal.kyatAmount;
+      await queryRunner.manager.save(user);
+
+      // Mark withdrawal as cancelled
+      withdrawal.status = UsdtWithdrawalStatus.CANCELLED;
+      await queryRunner.manager.save(withdrawal);
+
+      await queryRunner.commitTransaction();
+
+      this.logger.log(
+        `[ADMIN ACTION] Admin ${adminId} cancelled withdrawal ${withdrawalId}. Restored ${withdrawal.kyatAmount} KYAT to user ${withdrawal.userId}`,
+      );
+
+      return withdrawal;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(`[USDT WITHDRAWAL] Error cancelling withdrawal:`, error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
 }
 

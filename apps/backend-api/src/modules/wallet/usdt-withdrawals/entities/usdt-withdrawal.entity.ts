@@ -15,6 +15,7 @@ export enum UsdtWithdrawalStatus {
   QUEUED = 'queued', // Waiting for 1 hour delay
   SENT = 'sent', // USDT sent on-chain
   FAILED = 'failed', // Failed to send
+  CANCELLED = 'cancelled', // Cancelled by admin
 }
 
 @Entity('usdt_withdrawals')

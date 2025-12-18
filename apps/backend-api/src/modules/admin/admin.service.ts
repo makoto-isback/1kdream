@@ -1,6 +1,8 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { DepositsService } from '../wallet/deposits/deposits.service';
 import { WithdrawalsService } from '../wallet/withdrawals/withdrawals.service';
+import { UsdtDepositsService } from '../wallet/usdt-deposits/usdt-deposits.service';
+import { UsdtWithdrawalsService } from '../wallet/usdt-withdrawals/usdt-withdrawals.service';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { SystemService } from '../system/system.service';
@@ -8,6 +10,8 @@ import { LotteryService } from '../lottery/lottery.service';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { LotteryRoundStatus } from '../lottery/entities/lottery-round.entity';
+import { UsdtDepositStatus } from '../wallet/usdt-deposits/entities/usdt-deposit.entity';
+import { UsdtWithdrawalStatus } from '../wallet/usdt-withdrawals/entities/usdt-withdrawal.entity';
 
 @Injectable()
 export class AdminService {
@@ -16,6 +20,8 @@ export class AdminService {
   constructor(
     private depositsService: DepositsService,
     private withdrawalsService: WithdrawalsService,
+    private usdtDepositsService: UsdtDepositsService,
+    private usdtWithdrawalsService: UsdtWithdrawalsService,
     private usersService: UsersService,
     private systemService: SystemService,
     private lotteryService: LotteryService,
@@ -229,5 +235,78 @@ export class AdminService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * Get all USDT deposits with filters
+   */
+  async getUsdtDeposits(filters?: {
+    userId?: string;
+    status?: UsdtDepositStatus;
+    startDate?: Date;
+    endDate?: Date;
+  }) {
+    this.logger.log(`[ADMIN] Fetching USDT deposits with filters:`, filters);
+    return this.usdtDepositsService.getAllDeposits(filters);
+  }
+
+  /**
+   * Get all USDT withdrawals with filters
+   */
+  async getUsdtWithdrawals(filters?: {
+    userId?: string;
+    status?: UsdtWithdrawalStatus;
+  }) {
+    this.logger.log(`[ADMIN] Fetching USDT withdrawals with filters:`, filters);
+    return this.usdtWithdrawalsService.getAllWithdrawals(filters);
+  }
+
+  /**
+   * Cancel USDT withdrawal (only if status is SIGNED)
+   */
+  async cancelUsdtWithdrawal(withdrawalId: string, adminId: string) {
+    this.logger.log(`[ADMIN ACTION] Admin ${adminId} cancelling USDT withdrawal ${withdrawalId}`);
+    try {
+      const result = await this.usdtWithdrawalsService.cancelWithdrawal(withdrawalId, adminId);
+      this.logger.log(`[ADMIN ACTION] Admin ${adminId} successfully cancelled USDT withdrawal ${withdrawalId}`);
+      return result;
+    } catch (error) {
+      this.logger.error(`[ADMIN ACTION] Admin ${adminId} failed to cancel USDT withdrawal ${withdrawalId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get USDT statistics
+   */
+  async getUsdtStats() {
+    const users = await this.usersService.findAll();
+    const deposits = await this.usdtDepositsService.getAllDeposits();
+    const withdrawals = await this.usdtWithdrawalsService.getAllWithdrawals();
+
+    // Calculate total KYAT supply (sum of all user balances)
+    const totalKyatSupply = users.reduce((sum, user) => sum + Number(user.kyatBalance), 0);
+
+    // Calculate total USDT deposited (confirmed deposits only)
+    const totalUsdtDeposited = deposits
+      .filter((d) => d.status === UsdtDepositStatus.CONFIRMED)
+      .reduce((sum, d) => sum + Number(d.usdtAmount), 0);
+
+    // Calculate total USDT withdrawn (sent withdrawals only)
+    const totalUsdtWithdrawn = withdrawals
+      .filter((w) => w.status === UsdtWithdrawalStatus.SENT)
+      .reduce((sum, w) => sum + Number(w.usdtAmount), 0);
+
+    // Count pending withdrawals (signed or queued)
+    const pendingWithdrawalsCount = withdrawals.filter(
+      (w) => w.status === UsdtWithdrawalStatus.SIGNED || w.status === UsdtWithdrawalStatus.QUEUED,
+    ).length;
+
+    return {
+      totalKyatSupply,
+      totalUsdtDeposited,
+      totalUsdtWithdrawn,
+      pendingWithdrawalsCount,
+    };
   }
 }

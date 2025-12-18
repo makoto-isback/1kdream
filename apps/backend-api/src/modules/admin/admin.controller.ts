@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { UsdtDepositStatus } from '../wallet/usdt-deposits/entities/usdt-deposit.entity';
+import { UsdtWithdrawalStatus } from '../wallet/usdt-withdrawals/entities/usdt-withdrawal.entity';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -17,6 +19,14 @@ export class AdminController {
   @Get('stats')
   async getStats(@Request() req) {
     // AdminGuard already verified admin access
+    // Returns USDT-specific statistics (as requested)
+    return this.adminService.getUsdtStats();
+  }
+
+  @Get('system-stats')
+  async getSystemStats(@Request() req) {
+    // AdminGuard already verified admin access
+    // Returns general system stats (users, old deposits/withdrawals, etc.)
     return this.adminService.getSystemStats();
   }
 
@@ -113,5 +123,45 @@ export class AdminController {
   async createLotteryRound(@Request() req) {
     // AdminGuard already verified admin access
     return this.adminService.createLotteryRound(req.user.id);
+  }
+
+  // ========== USDT DEPOSITS & WITHDRAWALS ==========
+
+  @Get('deposits')
+  async getUsdtDeposits(
+    @Request() req,
+    @Query('userId') userId?: string,
+    @Query('status') status?: UsdtDepositStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    // AdminGuard already verified admin access
+    const filters: any = {};
+    if (userId) filters.userId = userId;
+    if (status) filters.status = status;
+    if (startDate) filters.startDate = new Date(startDate);
+    if (endDate) filters.endDate = new Date(endDate);
+
+    return this.adminService.getUsdtDeposits(filters);
+  }
+
+  @Get('withdrawals')
+  async getUsdtWithdrawals(
+    @Request() req,
+    @Query('userId') userId?: string,
+    @Query('status') status?: UsdtWithdrawalStatus,
+  ) {
+    // AdminGuard already verified admin access
+    const filters: any = {};
+    if (userId) filters.userId = userId;
+    if (status) filters.status = status;
+
+    return this.adminService.getUsdtWithdrawals(filters);
+  }
+
+  @Post('withdrawals/:id/cancel')
+  async cancelUsdtWithdrawal(@Request() req, @Param('id') id: string) {
+    // AdminGuard already verified admin access
+    return this.adminService.cancelUsdtWithdrawal(id, req.user.id);
   }
 }

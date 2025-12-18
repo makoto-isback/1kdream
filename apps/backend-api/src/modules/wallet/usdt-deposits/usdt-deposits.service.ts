@@ -270,5 +270,38 @@ export class UsdtDepositsService {
       where: { txHash },
     });
   }
+
+  /**
+   * Get all USDT deposits (admin only)
+   */
+  async getAllDeposits(filters?: {
+    userId?: string;
+    status?: UsdtDepositStatus;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<UsdtDeposit[]> {
+    const queryBuilder = this.usdtDepositsRepository
+      .createQueryBuilder('deposit')
+      .leftJoinAndSelect('deposit.user', 'user')
+      .orderBy('deposit.createdAt', 'DESC');
+
+    if (filters?.userId) {
+      queryBuilder.andWhere('deposit.userId = :userId', { userId: filters.userId });
+    }
+
+    if (filters?.status) {
+      queryBuilder.andWhere('deposit.status = :status', { status: filters.status });
+    }
+
+    if (filters?.startDate) {
+      queryBuilder.andWhere('deposit.createdAt >= :startDate', { startDate: filters.startDate });
+    }
+
+    if (filters?.endDate) {
+      queryBuilder.andWhere('deposit.createdAt <= :endDate', { endDate: filters.endDate });
+    }
+
+    return queryBuilder.getMany();
+  }
 }
 
