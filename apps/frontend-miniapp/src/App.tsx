@@ -4,6 +4,7 @@ import WebApp from '@twa-dev/sdk';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WalletProvider } from './contexts/WalletContext';
 import LotteryPage from './pages/LotteryPage';
+import Deposit from './pages/Deposit';
 import './styles/index.css';
 
 function AppContent() {
@@ -32,6 +33,7 @@ function AppContent() {
     <Router>
       <Routes>
         <Route path="/" element={<LotteryPage />} />
+        <Route path="/deposit" element={<Deposit />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
