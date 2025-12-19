@@ -169,8 +169,8 @@ export class UsdtDepositsService {
       }
 
       // Query jetton transfers for platform wallet
-      // TON Center API v3: GET /jetton/transfers?address=<platform_wallet>&jetton=<usdt_master>
-      const response = await axios.get(`${tonApiUrl}/jetton/transfers`, {
+      // TON Center API v3: GET /getJettonTransfers?address=<platform_wallet>&jetton=<usdt_master>
+      const response = await axios.get(`${tonApiUrl}/getJettonTransfers`, {
         params: {
           address: addressString,
           jetton: USDT_JETTON_MASTER,

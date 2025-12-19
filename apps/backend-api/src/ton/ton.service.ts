@@ -148,7 +148,7 @@ export class TonService implements OnModuleInit {
       const addressString = address.toString({ urlSafe: true, bounceable: false });
 
       // Query TON Center API v3 for transactions - DO NOT use lt or since
-      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
+      const response = await axios.get(`${this.tonApiUrl}/getTransactions`, {
         params: {
           address: addressString,
           limit: 20,
@@ -396,7 +396,7 @@ export class TonService implements OnModuleInit {
       // USDT on TON is a jetton with specific master address
       const usdtJettonMaster = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs'; // USDT Jetton Master on mainnet
       
-      const response = await axios.get(`${this.tonApiUrl}/jetton/transfers`, {
+      const response = await axios.get(`${this.tonApiUrl}/getJettonTransfers`, {
         params: {
           address: addressString,
           jetton: usdtJettonMaster,
@@ -432,14 +432,15 @@ export class TonService implements OnModuleInit {
 
     try {
       // TON Center API v3: Get transaction by hash
-      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
+      // Try to get transaction by hash directly
+      const response = await axios.get(`${this.tonApiUrl}/getTransaction`, {
         params: {
           hash: txHash,
         },
         headers: this.getTonApiHeaders(),
       });
       // TON Center API v3 wraps result in result field
-      return response.data?.result?.[0] || response.data;
+      return response.data?.result || response.data || null;
     } catch (error) {
       this.logger.error(`Error getting transaction ${txHash}:`, error);
       return null;
@@ -532,8 +533,8 @@ export class TonService implements OnModuleInit {
   ): Promise<Address> {
     try {
       // Query jetton wallet address from jetton master
-      // TON Center API v3: GET /jetton/wallet?address=<wallet>&jetton=<master>
-      const response = await axios.get(`${this.tonApiUrl}/jetton/wallet`, {
+      // TON Center API v3: GET /getJettonWallet?address=<wallet>&jetton=<master>
+      const response = await axios.get(`${this.tonApiUrl}/getJettonWallet`, {
         params: {
           address: walletAddress.toString({ urlSafe: true, bounceable: false }),
           jetton: jettonMasterAddress.toString({ urlSafe: true, bounceable: false }),

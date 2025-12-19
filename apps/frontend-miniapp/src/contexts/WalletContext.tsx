@@ -5,9 +5,12 @@ import { useClientReady } from '../hooks/useClientReady';
 interface WalletContextType {
   walletInfo: WalletInfo | null;
   isConnected: boolean;
+  isWalletConnected: boolean; // Alias for isConnected
+  walletAddress: string | null; // Convenience property
   isLoading: boolean;
   isClientReady: boolean;
   connect: () => Promise<void>;
+  connectWallet: () => Promise<void>; // Alias for connect
   disconnect: () => Promise<void>;
   signTransaction: (transaction: any) => Promise<string>;
   createUsdtTransferTransaction: (toAddress: string, amount: string) => any;
@@ -96,14 +99,20 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return tonConnectService.createTonTransferTransaction(toAddress, amount);
   };
 
+  const isConnected = !!walletInfo?.connected;
+  const walletAddress = walletInfo?.address || null;
+
   return (
     <WalletContext.Provider
       value={{
         walletInfo,
-        isConnected: !!walletInfo?.connected,
+        isConnected,
+        isWalletConnected: isConnected, // Alias
+        walletAddress, // Convenience property
         isLoading,
         isClientReady,
         connect,
+        connectWallet: connect, // Alias
         disconnect,
         signTransaction,
         createUsdtTransferTransaction,

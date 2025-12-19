@@ -174,7 +174,7 @@ export default function Deposit() {
         </div>
 
         {/* Wallet Connection */}
-        {!isWalletConnected && isClientReady && walletClientReady && (
+        {!isWalletConnected && isClientReady && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to deposit</p>
