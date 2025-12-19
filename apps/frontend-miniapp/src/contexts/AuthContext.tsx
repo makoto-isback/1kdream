@@ -25,14 +25,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async () => {
     try {
       const isDev = import.meta.env.DEV;
-      
-      // Telegram WebApp detection
-      
+
       // Detect Telegram Mini App
       const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
-      const initData = tg?.initData;
-      
-      if (!tg || !initData) {
+      const hasTelegram = !!tg;
+      const initData = tg?.initData || '';
+      const initDataUnsafe = (tg as any)?.initDataUnsafe || {};
+
+      // TEMP DEBUG: Always log auth bootstrap state
+      if (typeof window !== 'undefined') {
+        // eslint-disable-next-line no-console
+        console.log('[AUTH BOOTSTRAP]', {
+          hasTelegram,
+          initDataLength: initData.length,
+          initDataUnsafe,
+        });
+      }
+
+      // If there is no Telegram context at all
+      if (!hasTelegram) {
         if (isDev) {
           // Mock Telegram user for local development
           console.warn('🔧 DEV MODE: Telegram WebApp not available, using mock user');
@@ -54,13 +65,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return;
         } else {
           // Production: Telegram WebApp required
-          console.error('[TG AUTH] ❌ initData missing — app NOT running inside Telegram WebApp');
+          console.error('[TG AUTH] ❌ Telegram WebApp context not detected');
           setAuthError('TELEGRAM_WEBAPP_REQUIRED');
           return;
         }
       }
 
-      // Use Telegram initData directly
+      // Use Telegram initData string directly (may be empty in some environments)
       const response = await api.post('/auth/telegram', { initData });
       
       // Backend returns { access_token, user }
