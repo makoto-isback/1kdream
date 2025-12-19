@@ -6,6 +6,7 @@ import { UsdtDeposit } from './entities/usdt-deposit.entity';
 import { UsersModule } from '../../users/users.module';
 import { TonModule } from '../../../ton/ton.module';
 import { EventsModule } from '../../../gateways/events.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { EventsModule } from '../../../gateways/events.module';
     UsersModule,
     forwardRef(() => TonModule),
     EventsModule,
+    forwardRef(() => AuthModule), // Import AuthModule to access JwtModule for JwtAuthGuard
   ],
   controllers: [UsdtDepositsController],
   providers: [UsdtDepositsService],

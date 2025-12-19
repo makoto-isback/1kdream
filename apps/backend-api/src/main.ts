@@ -29,7 +29,10 @@ function validateEnvVars() {
   }
 
   // Validate TON deposit configuration if enabled
-  const tonDepositsEnabled = process.env.TON_ENABLE_DEPOSITS === 'true';
+  // Handle boolean env vars: 'true' (string) or '1'
+  const tonDepositsEnabled = 
+    process.env.TON_ENABLE_DEPOSITS === 'true' || 
+    process.env.TON_ENABLE_DEPOSITS === '1';
   if (tonDepositsEnabled) {
     const network = process.env.TON_NETWORK || 'mainnet';
     if (network !== 'mainnet') {
@@ -145,7 +148,10 @@ async function bootstrap() {
   } else {
     console.log(`📡 USDT deposit listener will start automatically`);
     
-    const tonDepositsEnabled = process.env.TON_ENABLE_DEPOSITS === 'true';
+    // Handle boolean env vars: 'true' (string) or '1'
+    const tonDepositsEnabled = 
+      process.env.TON_ENABLE_DEPOSITS === 'true' || 
+      process.env.TON_ENABLE_DEPOSITS === '1';
     if (tonDepositsEnabled) {
       console.log(`💰 TON deposit listener will start automatically`);
       console.log(`   - Confirmations required: ${process.env.TON_DEPOSIT_CONFIRMATIONS || '10'}`);
