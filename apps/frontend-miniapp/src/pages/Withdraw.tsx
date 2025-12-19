@@ -2,45 +2,63 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
-import { useUsdtWallet, kyatToUsdt, getWithdrawalTimeRemaining, formatCountdown } from '../hooks/useUsdtWallet';
 import { useWallet } from '../contexts/WalletContext';
 import { useClientReady } from '../hooks/useClientReady';
+import { kyatToUsdt } from '../hooks/useUsdtWallet';
 import './Withdraw.css';
+
+// Contact Support helper
+const handleContactSupport = () => {
+  const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
+  if (tg) {
+    // Use Telegram Mini App method
+    tg.openTelegramLink('https://t.me/onekadmin');
+  } else {
+    // Fallback for non-Telegram environments
+    window.open('https://t.me/onekadmin', '_blank');
+  }
+};
 
 export default function Withdraw() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const { t } = useTranslation();
   const isClientReady = useClientReady();
-  const { isWalletConnected, walletAddress, isClientReady: walletClientReady } = useWallet();
-  const {
-    isActivated,
-    withdrawals,
-    withdrawalLoading,
-    createWithdrawal,
-    refreshWithdrawals,
-  } = useUsdtWallet();
+  
+  // Wallet context - defensive access
+  let walletContext;
+  try {
+    walletContext = useWallet();
+  } catch (error) {
+    console.error('[Withdraw] Wallet context error (non-fatal):', error);
+    walletContext = {
+      isWalletConnected: false,
+      walletAddress: null,
+      connectWallet: async () => {},
+      isLoading: false,
+      isTelegramContext: null,
+    };
+  }
+
+  const { 
+    isWalletConnected, 
+    walletAddress, 
+    connectWallet, 
+    isLoading: walletLoading,
+    isTelegramContext,
+  } = walletContext;
 
   const [kyatAmount, setKyatAmount] = useState('');
+  const [usdtAmount, setUsdtAmount] = useState('');
   const [tonAddress, setTonAddress] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [countdownTimers, setCountdownTimers] = useState<Record<string, number>>({});
 
+  // Debug log when wallet UI renders
   useEffect(() => {
-    // Update countdown timers every second
-    const interval = setInterval(() => {
-      const timers: Record<string, number> = {};
-      withdrawals.forEach((w) => {
-        if (w.status === 'signed' || w.status === 'queued') {
-          timers[w.id] = getWithdrawalTimeRemaining(w.executeAfter);
-        }
-      });
-      setCountdownTimers(timers);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [withdrawals]);
+    const shouldRender = isAuthReady && !!user;
+    if (shouldRender) {
+      console.log('[WALLET UI v2] rendered');
+    }
+  }, [isAuthReady, user]);
 
   // Helper to shorten wallet address
   const shortenAddress = (address: string | null): string => {
@@ -48,62 +66,85 @@ export default function Withdraw() {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  const handleWithdraw = async () => {
-    if (!isWalletConnected) {
-      setError('Please connect wallet first');
-      return;
-    }
-
-    if (!isActivated) {
-      setError('Please activate your account first');
-      return;
-    }
-
-    const amount = parseFloat(kyatAmount);
-    if (!amount || amount < 5000) {
-      setError('Minimum withdrawal is 5,000 KYAT');
-      return;
-    }
-
-    if (user && amount > Number(user.kyatBalance)) {
-      setError('Insufficient balance');
-      return;
-    }
-
-    if (!tonAddress || tonAddress.trim() === '') {
-      setError('Please enter TON address');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
+  // Handle wallet connection
+  const handleConnectWallet = async () => {
     try {
-      await createWithdrawal(amount, tonAddress.trim());
-      setKyatAmount('');
-      setTonAddress('');
+      await connectWallet();
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'Withdrawal failed');
-    } finally {
-      setLoading(false);
+      console.error('[Withdraw] Wallet connection error:', err);
     }
   };
 
-  const getStatusLabel = (status: string): string => {
-    switch (status) {
-      case 'signed':
-        return 'Pending (1 hour delay)';
-      case 'queued':
-        return 'Processing';
-      case 'sent':
-        return 'Sent';
-      case 'failed':
-        return 'Failed';
-      default:
-        return status;
+  // Sync USDT amount when KYAT changes
+  useEffect(() => {
+    if (kyatAmount) {
+      const amount = parseFloat(kyatAmount);
+      if (!isNaN(amount) && amount > 0) {
+        setUsdtAmount(kyatToUsdt(amount).toFixed(6));
+      } else {
+        setUsdtAmount('');
+      }
+    } else {
+      setUsdtAmount('');
     }
-  };
+  }, [kyatAmount]);
 
+  // Sync KYAT amount when USDT changes
+  useEffect(() => {
+    if (usdtAmount) {
+      const amount = parseFloat(usdtAmount);
+      if (!isNaN(amount) && amount > 0) {
+        setKyatAmount((amount * 5000).toFixed(0));
+      } else {
+        setKyatAmount('');
+      }
+    } else {
+      setKyatAmount('');
+    }
+  }, [usdtAmount]);
+
+  // CRITICAL: Wallet UI must render ONLY when isAuthReady === true && user !== null
+  const shouldRenderWalletUI = isAuthReady && !!user;
+
+  // Show loading ONLY before auth is ready or client not ready
+  if (!isClientReady) {
+    return (
+      <div className="withdraw">
+        <div className="container">
+          <div className="header">
+            <button className="back-btn" onClick={() => navigate('/')}>←</button>
+            <h1>{t('withdraw.title')}</h1>
+          </div>
+          <div className="form-card">
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p>Loading wallet...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If auth not ready yet, show minimal loading
+  if (!shouldRenderWalletUI) {
+    return (
+      <div className="withdraw">
+        <div className="container">
+          <div className="header">
+            <button className="back-btn" onClick={() => navigate('/')}>←</button>
+            <h1>{t('withdraw.title')}</h1>
+          </div>
+          <div className="form-card">
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <p>Authenticating...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // CRITICAL: Once auth is ready and user exists, ALWAYS render wallet UI
   return (
     <div className="withdraw">
       <div className="container">
@@ -112,47 +153,70 @@ export default function Withdraw() {
           <h1>{t('withdraw.title')}</h1>
         </div>
 
-        <div className="balance-card">
-          <span>{t('home.balance')}</span>
-          <span className="balance-value">{user ? Number(user.kyatBalance).toLocaleString() : 0} KYAT</span>
+        {/* Debug label */}
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '4px 8px', 
+          fontSize: '10px', 
+          color: '#666', 
+          backgroundColor: '#1a1a1a',
+          borderRadius: '4px',
+          marginBottom: '8px'
+        }}>
+          Wallet UI v2 – Support-assisted
         </div>
 
+        <div className="balance-card">
+          <span>{t('home.balance')}</span>
+          <span className="balance-value">
+            {user ? Number(user.kyatBalance).toLocaleString() : 0} KYAT
+          </span>
+        </div>
+
+        {/* Telegram WebApp Required Warning - informational only */}
+        {isTelegramContext === false && (
+          <div className="form-card" style={{ borderColor: '#ff6b6b', background: '#2a1a1a' }}>
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📱</div>
+              <h3 style={{ marginBottom: '12px', color: '#ff6b6b' }}>Telegram Mini App Required</h3>
+              <p style={{ marginBottom: '16px', color: '#ccc', fontSize: '14px' }}>
+                TON Connect wallet features require the Telegram Mini App environment.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Wallet Connection Check */}
-        {!isWalletConnected && isClientReady && (
+        {!isWalletConnected && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to withdraw</p>
-              <p style={{ fontSize: '12px', color: '#999' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleConnectWallet}
+                disabled={walletLoading}
+              >
+                {walletLoading ? t('common.loading') : 'Connect Wallet'}
+              </button>
+              <p style={{ marginTop: '12px', fontSize: '12px', color: '#999' }}>
                 Go to Deposit page to connect wallet
               </p>
             </div>
           </div>
         )}
 
-        {/* Loading state during SSR */}
-        {!isClientReady && (
-          <div className="form-card">
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <p style={{ marginBottom: '16px' }}>Loading wallet...</p>
-            </div>
-          </div>
-        )}
-
-        {/* Activation Check */}
-        {isWalletConnected && !isActivated && (
-          <div className="form-card">
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <p style={{ marginBottom: '16px' }}>Please activate your account first</p>
-              <p style={{ fontSize: '12px', color: '#999' }}>
-                Go to Deposit page to activate (1 TON one-time fee)
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Withdrawal Form */}
-        {isWalletConnected && isActivated && (
+        {/* Withdrawal Form - Simple input fields */}
+        {isWalletConnected && (
           <>
+            {walletAddress && (
+              <div className="form-card" style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Connected Wallet:</span>
+                  <code style={{ fontSize: '12px' }}>{shortenAddress(walletAddress)}</code>
+                </div>
+              </div>
+            )}
+
             <div className="form-card">
               <label>{t('withdraw.amount')} (KYAT)</label>
               <input
@@ -161,17 +225,32 @@ export default function Withdraw() {
                 value={kyatAmount}
                 onChange={(e) => setKyatAmount(e.target.value)}
                 placeholder="5000"
-                min="5000"
+                min="0"
                 step="1000"
               />
               {kyatAmount && (
                 <div className="usdt-amount" style={{ marginTop: '8px', color: '#999' }}>
-                  = {kyatToUsdt(parseFloat(kyatAmount)).toFixed(6)} USDT
+                  = {usdtAmount} USDT
                 </div>
               )}
-              <div className="rate-info" style={{ marginTop: '8px' }}>
-                1 USDT = 5,000 KYAT
-              </div>
+            </div>
+
+            <div className="form-card">
+              <label>Amount (USDT)</label>
+              <input
+                type="number"
+                className="input"
+                value={usdtAmount}
+                onChange={(e) => setUsdtAmount(e.target.value)}
+                placeholder="1.0"
+                min="0"
+                step="0.000001"
+              />
+              {usdtAmount && (
+                <div className="usdt-amount" style={{ marginTop: '8px', color: '#999' }}>
+                  = {kyatAmount} KYAT
+                </div>
+              )}
             </div>
 
             <div className="form-card">
@@ -185,78 +264,29 @@ export default function Withdraw() {
               />
             </div>
 
-            {/* 1 Hour Delay Notice */}
             <div className="form-card" style={{ background: '#fff3cd', border: '1px solid #ffc107', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
               <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '4px' }}>
-                ⏰ Withdrawal Delay
+                ℹ️ Support-Assisted Withdrawal
               </div>
               <div style={{ fontSize: '12px', color: '#666' }}>
-                Withdrawals are processed after a 1-hour delay for security. Your balance will be deducted immediately.
+                Enter the amount and TON address, then contact support to complete the withdrawal.
               </div>
             </div>
 
-            {error && (
-              <div style={{ padding: '12px', background: '#ff4444', color: 'white', borderRadius: '8px', marginBottom: '16px' }}>
-                {error}
-              </div>
-            )}
+            <div className="rate-info" style={{ marginTop: '8px', marginBottom: '16px', textAlign: 'center' }}>
+              1 USDT = 5,000 KYAT
+            </div>
 
+            {/* Contact Support Button */}
             <button
               className="btn btn-primary"
-              onClick={handleWithdraw}
-              disabled={loading || withdrawalLoading || !kyatAmount || !tonAddress}
+              onClick={handleContactSupport}
+              style={{ width: '100%' }}
             >
-              {loading ? t('common.loading') : t('withdraw.request')}
+              Contact Support
             </button>
           </>
         )}
-
-        {/* Withdrawals List */}
-        <div className="withdrawals-list" style={{ marginTop: '24px' }}>
-          <h3>{t('withdraw.myWithdrawals')}</h3>
-          {withdrawalLoading ? (
-            <div className="empty">Loading...</div>
-          ) : withdrawals.length === 0 ? (
-            <div className="empty">မှတ်တမ်း မရှိပါ</div>
-          ) : (
-            <div className="withdrawals">
-              {withdrawals.map((withdrawal) => {
-                const remaining = countdownTimers[withdrawal.id] || getWithdrawalTimeRemaining(withdrawal.executeAfter);
-                const showCountdown = (withdrawal.status === 'signed' || withdrawal.status === 'queued') && remaining > 0;
-
-                return (
-                  <div key={withdrawal.id} className="withdrawal-item">
-                    <div className="withdrawal-info">
-                      <span>{Number(withdrawal.kyatAmount).toLocaleString()} KYAT</span>
-                      <span>= {Number(withdrawal.usdtAmount).toFixed(6)} USDT</span>
-                    </div>
-                    <div className="withdrawal-details">
-                      <div className="address">{withdrawal.tonAddress}</div>
-                      {showCountdown && (
-                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ff9800', marginTop: '4px' }}>
-                          ⏰ {formatCountdown(remaining)}
-                        </div>
-                      )}
-                      <div className="withdrawal-status">
-                        <span className={`status status-${withdrawal.status}`}>
-                          {getStatusLabel(withdrawal.status)}
-                        </span>
-                        <span className="date">
-                          {new Date(withdrawal.createdAt).toLocaleDateString('my-MM')}
-                        </span>
-                      </div>
-                      {withdrawal.tonTxHash && (
-                        <div style={{ fontSize: '10px', color: '#666', marginTop: '4px' }}>
-                          TX: {withdrawal.tonTxHash.slice(0, 8)}...
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
