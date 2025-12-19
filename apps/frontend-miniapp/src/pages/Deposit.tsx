@@ -6,6 +6,7 @@ import { useUsdtWallet, kyatToUsdt } from '../hooks/useUsdtWallet';
 import { useWallet } from '../contexts/WalletContext';
 import { activationService } from '../services/activation';
 import { useClientReady } from '../hooks/useClientReady';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import api from '../services/api';
 import '../styles/Deposit.css';
 
@@ -14,6 +15,27 @@ export default function Deposit() {
   const { user, refreshUser, isAuthReady } = useAuth();
   const { t } = useTranslation();
   const isClientReady = useClientReady();
+  
+  // Defensive: Wrap wallet context access in try/catch
+  let walletContext;
+  try {
+    walletContext = useWallet();
+  } catch (error) {
+    console.error('[Deposit] Wallet context error (non-fatal):', error);
+    // Provide fallback values
+    walletContext = {
+      isWalletConnected: false,
+      walletAddress: null,
+      connectWallet: async () => {},
+      isLoading: false,
+      isClientReady: false,
+      isTelegramContext: null,
+      signTransaction: async () => '',
+      createUsdtTransferTransaction: () => ({}),
+      createTonTransferTransaction: () => ({}),
+    };
+  }
+
   const { 
     isWalletConnected, 
     walletAddress, 
@@ -24,7 +46,26 @@ export default function Deposit() {
     signTransaction,
     createUsdtTransferTransaction,
     createTonTransferTransaction,
-  } = useWallet();
+  } = walletContext;
+
+  // Defensive: Wrap USDT wallet hook in try/catch
+  let usdtWallet;
+  try {
+    usdtWallet = useUsdtWallet();
+  } catch (error) {
+    console.error('[Deposit] USDT wallet hook error (non-fatal):', error);
+    // Provide fallback values
+    usdtWallet = {
+      isActivated: false,
+      activationLoading: false,
+      deposits: [],
+      depositLoading: false,
+      createDeposit: async () => {},
+      refreshDeposits: async () => {},
+      checkActivation: async () => {},
+    };
+  }
+
   const {
     isActivated,
     activationLoading,
@@ -33,7 +74,7 @@ export default function Deposit() {
     createDeposit,
     refreshDeposits,
     checkActivation,
-  } = useUsdtWallet();
+  } = usdtWallet;
 
   const [kyatAmount, setKyatAmount] = useState('');
   const [signing, setSigning] = useState(false);
@@ -41,12 +82,39 @@ export default function Deposit() {
   const [activationTxHash, setActivationTxHash] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // TEMP DEBUG: Log wallet render conditions
+  useEffect(() => {
+    const shouldRender = isAuthReady && !!user;
+    console.log('[WALLET RENDER]', {
+      shouldRender,
+      isAuthReady,
+      hasUser: !!user,
+      isWalletConnected,
+      isTelegramContext,
+    });
+  }, [isAuthReady, user, isWalletConnected, isTelegramContext]);
+
   // Check activation - ONLY when user is authenticated
   // Don't block rendering if auth fails
+  // Make API call async and non-blocking
   useEffect(() => {
-    if (user && !isActivated && isAuthReady) {
-      checkActivation();
+    if (!user || !isAuthReady) {
+      return;
     }
+
+    // Async, non-blocking activation check
+    const checkActivationAsync = async () => {
+      try {
+        if (!isActivated) {
+          await checkActivation();
+        }
+      } catch (error) {
+        // Log but don't block UI
+        console.error('[Deposit] Activation check failed (non-fatal):', error);
+      }
+    };
+
+    checkActivationAsync();
   }, [user, isActivated, isAuthReady, checkActivation]);
 
   // Helper to shorten wallet address
@@ -55,17 +123,19 @@ export default function Deposit() {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  // Handle wallet connection
+  // Handle wallet connection - defensive with try/catch
   const handleConnectWallet = async () => {
     try {
       setError(null);
       await connectWallet();
     } catch (err: any) {
+      console.error('[Deposit] Wallet connection error:', err);
       setError(err.message || 'Failed to connect wallet');
+      // Don't throw - show error in UI instead
     }
   };
 
-  // Handle activation
+  // Handle activation - defensive with try/catch and null guards
   const handleActivate = async () => {
     if (!isWalletConnected || !walletAddress) {
       setError('Please connect wallet first');
@@ -76,43 +146,79 @@ export default function Deposit() {
       setActivating(true);
       setError(null);
 
-      // Get platform wallet address
-      const walletInfo = await activationService.getWalletAddress();
+      // Get platform wallet address - async, fail silently if backend fails
+      let walletInfo;
+      try {
+        walletInfo = await activationService.getWalletAddress();
+      } catch (err) {
+        console.error('[Deposit] Failed to get wallet address (non-fatal):', err);
+        setError('Failed to load activation wallet address. Please try again.');
+        return;
+      }
 
-      // Create 1 TON transfer transaction
-      const transaction = createTonTransferTransaction(walletInfo.address, walletInfo.amount);
+      if (!walletInfo?.address) {
+        setError('Invalid wallet address received from server');
+        return;
+      }
 
-      // Sign transaction via TON Connect
-      // Note: TON Connect returns BOC, but we need txHash
-      // The backend will verify the transaction on-chain using the signed transaction
-      // For now, we'll use the BOC as identifier - backend can extract hash from it
-      const boc = await signTransaction(transaction);
+      // Create 1 TON transfer transaction - defensive
+      let transaction;
+      try {
+        transaction = createTonTransferTransaction(walletInfo.address, walletInfo.amount);
+      } catch (err) {
+        console.error('[Deposit] Failed to create transaction:', err);
+        setError('Failed to create transaction. Please try again.');
+        return;
+      }
+
+      // Sign transaction via TON Connect - defensive
+      let boc;
+      try {
+        boc = await signTransaction(transaction);
+      } catch (err) {
+        console.error('[Deposit] Transaction signing failed:', err);
+        setError('Transaction signing failed. Please try again.');
+        return;
+      }
       
       // Use BOC as txHash identifier (backend will verify on-chain)
-      // In production, you might want to wait for transaction confirmation and get actual hash
       const txHash = boc || `activation-${Date.now()}`;
 
       setActivationTxHash(txHash);
 
-      // Verify activation with backend
-      await activationService.verifyActivation({
-        txHash,
-        walletAddress,
-      });
+      // Verify activation with backend - defensive
+      try {
+        await activationService.verifyActivation({
+          txHash,
+          walletAddress,
+        });
+      } catch (err: any) {
+        console.error('[Deposit] Activation verification failed:', err);
+        setError(err.response?.data?.message || err.message || 'Activation verification failed');
+        return;
+      }
 
-      // Refresh activation status
-      await checkActivation();
-      await refreshUser();
+      // Refresh activation status - async, non-blocking
+      try {
+        await Promise.all([
+          checkActivation(),
+          refreshUser(),
+        ]);
+      } catch (err) {
+        console.error('[Deposit] Failed to refresh status (non-fatal):', err);
+        // Don't show error - activation succeeded, refresh will happen on next load
+      }
       
       setActivationTxHash('');
     } catch (err: any) {
+      console.error('[Deposit] Unexpected activation error:', err);
       setError(err.response?.data?.message || err.message || 'Activation failed');
     } finally {
       setActivating(false);
     }
   };
 
-  // Handle deposit
+  // Handle deposit - defensive with try/catch and null guards
   const handleCreateDeposit = async () => {
     if (!isWalletConnected || !walletAddress) {
       setError('Please connect wallet first');
@@ -134,46 +240,81 @@ export default function Deposit() {
       setSigning(true);
       setError(null);
 
-      // Get platform wallet address from activation endpoint (same wallet)
-      const platformWallet = await activationService.getWalletAddress();
+      // Get platform wallet address - async, fail silently if backend fails
+      let platformWallet;
+      try {
+        platformWallet = await activationService.getWalletAddress();
+      } catch (err) {
+        console.error('[Deposit] Failed to get platform wallet (non-fatal):', err);
+        setError('Failed to load deposit wallet address. Please try again.');
+        return;
+      }
+
+      if (!platformWallet?.address) {
+        setError('Invalid deposit wallet address received from server');
+        return;
+      }
+
       const usdtAmount = kyatToUsdt(amount);
 
-      // Create USDT transfer transaction
-      // Note: createUsdtTransferTransaction needs proper jetton wallet address
-      // For now, we'll create a simple transfer structure
-      // The actual jetton transfer will be handled by the wallet app
-      const transaction = createUsdtTransferTransaction(platformWallet.address, usdtAmount.toString());
+      // Create USDT transfer transaction - defensive
+      let transaction;
+      try {
+        transaction = createUsdtTransferTransaction(platformWallet.address, usdtAmount.toString());
+      } catch (err) {
+        console.error('[Deposit] Failed to create USDT transaction:', err);
+        setError('Failed to create transaction. Please try again.');
+        return;
+      }
 
-      // Sign transaction via TON Connect
-      // User will sign in their wallet app
-      const boc = await signTransaction(transaction);
+      // Sign transaction via TON Connect - defensive
+      let boc;
+      try {
+        boc = await signTransaction(transaction);
+      } catch (err) {
+        console.error('[Deposit] Transaction signing failed:', err);
+        setError('Transaction signing failed. Please try again.');
+        return;
+      }
       
       // Use BOC as txHash identifier (backend will verify on-chain)
-      // In production, extract actual txHash from confirmed transaction
       const txHash = boc || `deposit-${Date.now()}`;
 
-      // Send to backend for verification and processing
-      await createDeposit(amount, txHash);
-
-      setKyatAmount('');
+      // Send to backend for verification and processing - defensive
+      try {
+        await createDeposit(amount, txHash);
+        setKyatAmount('');
+      } catch (err: any) {
+        console.error('[Deposit] Deposit creation failed:', err);
+        setError(err.response?.data?.message || err.message || 'Deposit failed');
+      }
     } catch (err: any) {
+      console.error('[Deposit] Unexpected deposit error:', err);
       setError(err.response?.data?.message || err.message || 'Deposit failed');
     } finally {
       setSigning(false);
     }
   };
 
+  // CRITICAL: Wallet UI must render based ONLY on isAuthReady and user
+  // Remove dependencies on socket, deposit address fetch, Telegram theme, etc.
+  const shouldRenderWalletUI = isAuthReady && !!user;
+
   return (
-    <div className="deposit">
+    <ErrorBoundary>
+      <div className="deposit">
       <div className="container">
         <div className="header">
           <button className="back-btn" onClick={() => navigate('/')}>←</button>
           <h1>{t('deposit.title')}</h1>
         </div>
 
+        {/* Balance card - defensive null guard */}
         <div className="balance-card">
           <span>{t('home.balance')}</span>
-          <span className="balance-value">{user ? Number(user.kyatBalance).toLocaleString() : 0} KYAT</span>
+          <span className="balance-value">
+            {user?.kyatBalance ? Number(user.kyatBalance).toLocaleString() : 0} KYAT
+          </span>
         </div>
 
         {/* Telegram WebApp Required Warning */}
@@ -195,8 +336,9 @@ export default function Deposit() {
           </div>
         )}
 
-        {/* Wallet Connection - ONLY show when Telegram context exists */}
-        {!isWalletConnected && isClientReady && isTelegramContext === true && (
+        {/* Wallet Connection - Show when auth ready, user exists, and wallet not connected */}
+        {/* Remove dependency on Telegram context check - render based on auth state only */}
+        {shouldRenderWalletUI && !isWalletConnected && isClientReady && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to deposit</p>
@@ -207,16 +349,21 @@ export default function Deposit() {
               >
                 {walletLoading ? t('common.loading') : 'Connect Wallet'}
               </button>
+              {isTelegramContext === false && (
+                <p style={{ marginTop: '12px', fontSize: '12px', color: '#999' }}>
+                  TON Connect requires Telegram Mini App
+                </p>
+              )}
             </div>
           </div>
         )}
 
-        {/* Loading state during SSR or Telegram check */}
-        {(!isClientReady || isTelegramContext === null) && (
+        {/* Loading state during SSR or initial load */}
+        {(!isClientReady || !shouldRenderWalletUI) && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>
-                {isTelegramContext === null ? 'Checking Telegram context...' : 'Loading wallet...'}
+                {!isClientReady ? 'Loading wallet...' : 'Authenticating...'}
               </p>
             </div>
           </div>
@@ -337,5 +484,6 @@ export default function Deposit() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

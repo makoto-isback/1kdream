@@ -26,27 +26,36 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isTelegramContext, setIsTelegramContext] = useState<boolean | null>(null);
 
-  // Check for Telegram WebApp context
+  // Check for Telegram WebApp context - isolated to useEffect, never during render
   useEffect(() => {
     if (!isClientReady) {
       return;
     }
 
+    // Defensive: Wrap Telegram checks in try/catch
     const checkTelegram = () => {
-      const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
-      const hasTelegram = !!tg;
-      setIsTelegramContext(hasTelegram);
-      
-      if (!hasTelegram) {
-        console.warn('[Wallet Context] ⚠️ Telegram WebApp context not found');
-        console.warn('[Wallet Context] TON Connect requires Telegram Mini App environment');
-        console.warn('[Wallet Context] Open this app from within Telegram to use wallet features');
+      try {
+        const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
+        const hasTelegram = !!tg;
+        setIsTelegramContext(hasTelegram);
+        
+        if (!hasTelegram) {
+          console.warn('[Wallet Context] ⚠️ Telegram WebApp context not found');
+          console.warn('[Wallet Context] TON Connect requires Telegram Mini App environment');
+          console.warn('[Wallet Context] Open this app from within Telegram to use wallet features');
+          setIsLoading(false);
+          return false;
+        }
+        
+        console.log('[Wallet Context] ✅ Telegram WebApp context detected');
+        return true;
+      } catch (error) {
+        // Telegram WebView API access failed - log but don't crash
+        console.error('[Wallet Context] Telegram check error (non-fatal):', error);
+        setIsTelegramContext(false);
         setIsLoading(false);
         return false;
       }
-      
-      console.log('[Wallet Context] ✅ Telegram WebApp context detected');
-      return true;
     };
 
     if (!checkTelegram()) {
@@ -54,6 +63,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // Load wallet info from storage on mount (only if Telegram context exists)
+    // Async, non-blocking, fail silently
     const loadWallet = async () => {
       try {
         const info = tonConnectService.getWalletInfo();
@@ -63,7 +73,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           setWalletInfo(null);
         }
       } catch (error) {
-        console.error('[Wallet Context] Failed to load wallet:', error);
+        // Log but don't throw - wallet loading failure shouldn't crash UI
+        console.error('[Wallet Context] Failed to load wallet (non-fatal):', error);
         setWalletInfo(null);
       } finally {
         setIsLoading(false);
@@ -91,6 +102,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const info = await tonConnectService.connect();
       setWalletInfo(info);
     } catch (error) {
+      // Log error but rethrow so UI can show error message
       console.error('[Wallet Context] Connect error:', error);
       throw error;
     } finally {
