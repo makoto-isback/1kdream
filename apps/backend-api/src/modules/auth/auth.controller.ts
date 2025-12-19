@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  Request,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
@@ -8,28 +16,45 @@ export class AuthController {
 
   @Post('telegram')
   async loginWithTelegram(@Body() body: { initData?: string } | any) {
-    // Support both formats:
-    // 1. New format: { initData: string } - parse the initData string
-    // 2. Legacy format: { id, first_name, ... } - use directly
-    let parsedData: any;
-    
-    if (body.initData && typeof body.initData === 'string') {
-      // Parse Telegram initData string (URL-encoded format)
-      // Format: user={...}&auth_date=...&hash=...
-      parsedData = this.parseInitDataString(body.initData);
-    } else {
-      // Legacy format: already parsed object
-      parsedData = body;
+    try {
+      // Support both formats:
+      // 1. New format: { initData: string } - parse the initData string
+      // 2. Legacy format: { id, first_name, ... } - use directly
+      let parsedData: any;
+
+      if (body.initData && typeof body.initData === 'string') {
+        // Parse Telegram initData string (URL-encoded format)
+        // Format: user={...}&auth_date=...&hash=...
+        parsedData = this.parseInitDataString(body.initData);
+      } else {
+        // Legacy format: already parsed object
+        parsedData = body;
+      }
+
+      // Basic safety: require a Telegram ID
+      if (!parsedData || !parsedData.id) {
+        console.warn('[AUTH] ❌ Telegram auth failed: missing id in initData/body');
+        throw new UnauthorizedException('Invalid Telegram init data');
+      }
+
+      const user = await this.authService.validateTelegramUser(parsedData);
+      const result = await this.authService.login(user);
+
+      // Log JWT issuance for debugging
+      console.log('[AUTH] ✅ Telegram auth successful for user:', user.id, 'telegramId:', user.telegramId);
+      console.log('[AUTH] ✅ JWT token length:', result.access_token?.length || 0);
+
+      return result;
+    } catch (error) {
+      // NEVER let unexpected errors bubble as 500 – always convert to 401
+      console.error('[AUTH] ❌ Telegram login error:', error);
+
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      throw new UnauthorizedException('Telegram authentication failed');
     }
-    
-    const user = await this.authService.validateTelegramUser(parsedData);
-    const result = await this.authService.login(user);
-    
-    // Log JWT issuance for debugging
-    console.log('[AUTH] ✅ JWT issued for user:', user.id, 'telegramId:', user.telegramId);
-    console.log('[AUTH] ✅ JWT token length:', result.access_token?.length || 0);
-    
-    return result;
   }
 
   /**

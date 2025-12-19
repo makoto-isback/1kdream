@@ -20,17 +20,28 @@ export class AuthService {
 
   async validateTelegramUser(initData: TelegramInitData) {
     // In production, verify the hash from Telegram
-    // For now, we'll trust the data
-    const user = await this.usersService.findOrCreateByTelegramId(
-      initData.id,
-      {
-        firstName: initData.first_name,
-        lastName: initData.last_name,
-        username: initData.username,
-      },
-    );
+    // For now, we'll trust the data but still validate presence of id
+    if (!initData || !initData.id) {
+      throw new UnauthorizedException('Invalid Telegram data: missing id');
+    }
 
-    return user;
+    try {
+      const user = await this.usersService.findOrCreateByTelegramId(
+        initData.id,
+        {
+          firstName: initData.first_name,
+          lastName: initData.last_name,
+          username: initData.username,
+        },
+      );
+
+      return user;
+    } catch (error) {
+      // Wrap any DB or unexpected errors as Unauthorized so controller
+      // can consistently respond with 401 instead of 500
+      console.error('[AUTH] Error creating/finding user by Telegram ID:', error);
+      throw new UnauthorizedException('Failed to create or load user');
+    }
   }
 
   async login(user: any) {
