@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './filters/http-exception.filter';
 
 // Load environment variables from .env before validation
 // NOTE: In production (Railway), .env files are NOT used.
@@ -80,10 +81,48 @@ async function bootstrap() {
     transform: true,
   }));
 
-  // CORS configuration: Allow all origins (safe for Telegram Mini App with JWT auth)
+  // Global exception filter to ensure CORS headers are included on ALL error responses
+  // This is critical because NestJS exception filters run after CORS middleware
+  // and errors might not include CORS headers by default
+  app.useGlobalFilters(new AllExceptionsFilter());
+
+  // CORS configuration for Telegram Mini App
+  // Must allow all origins because Telegram WebApp can be opened from various domains
+  // Credentials are required for JWT token cookies (if used) and Authorization headers
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Postman, or same-origin requests)
+      // This is safe because we use JWT authentication, not origin-based auth
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // In production, you can restrict to specific domains if needed
+      // For Telegram Mini App, we need to allow all origins
+      // Telegram WebApp can be opened from various domains (web.telegram.org, etc.)
+      callback(null, true);
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Credentials',
+      'Access-Control-Allow-Headers',
+      'Access-Control-Allow-Methods',
+    ],
+    exposedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Access-Control-Allow-Origin',
+      'Access-Control-Allow-Credentials',
+    ],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
 
   const port = process.env.PORT || 3000;
