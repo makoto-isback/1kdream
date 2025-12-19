@@ -11,7 +11,7 @@ import '../styles/Deposit.css';
 
 export default function Deposit() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, isAuthReady } = useAuth();
   const { t } = useTranslation();
   const isClientReady = useClientReady();
   const { 
@@ -41,42 +41,13 @@ export default function Deposit() {
   const [activationTxHash, setActivationTxHash] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // DEBUG: Log button rendering conditions
+  // Check activation - ONLY when user is authenticated
+  // Don't block rendering if auth fails
   useEffect(() => {
-    const shouldShowButton = !isWalletConnected && isClientReady && isTelegramContext === true;
-    const shouldShowTelegramWarning = isTelegramContext === false;
-    
-    console.log('[Deposit] Render state:', {
-      isClientReady,
-      isWalletConnected,
-      isTelegramContext,
-      walletClientReady,
-      walletLoading,
-      shouldShowButton,
-      shouldShowTelegramWarning,
-    });
-    
-    if (!shouldShowButton && !shouldShowTelegramWarning) {
-      if (isTelegramContext === null) {
-        console.log('[Deposit] ⏳ Waiting for Telegram context check...');
-      } else if (!isClientReady) {
-        console.log('[Deposit] ⏳ Waiting for client to be ready...');
-      } else if (isWalletConnected) {
-        console.log('[Deposit] ℹ️ Wallet already connected, button hidden');
-      }
-    } else if (shouldShowTelegramWarning) {
-      console.warn('[Deposit] ⚠️ Connect Wallet button hidden: Not in Telegram Mini App');
-      console.warn('[Deposit] Open this app from within Telegram to use wallet features');
-    } else if (shouldShowButton) {
-      console.log('[Deposit] ✅ Connect Wallet button should be visible');
-    }
-  }, [isClientReady, isWalletConnected, isTelegramContext, walletClientReady, walletLoading]);
-
-  useEffect(() => {
-    if (user && !isActivated) {
+    if (user && !isActivated && isAuthReady) {
       checkActivation();
     }
-  }, [user, isActivated, checkActivation]);
+  }, [user, isActivated, isAuthReady, checkActivation]);
 
   // Helper to shorten wallet address
   const shortenAddress = (address: string | null): string => {

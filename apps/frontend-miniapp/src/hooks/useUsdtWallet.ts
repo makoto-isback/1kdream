@@ -36,7 +36,7 @@ export interface UsdtWalletState {
 
 export const useUsdtWallet = (): UsdtWalletState => {
   const { walletInfo, isConnected, connect: connectWalletFn, isLoading: walletLoading } = useWallet();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, isAuthReady } = useAuth();
   
   const [activationStatus, setActivationStatus] = useState<ActivationStatus | null>(null);
   const [activationLoading, setActivationLoading] = useState(false);
@@ -45,9 +45,9 @@ export const useUsdtWallet = (): UsdtWalletState => {
   const [withdrawals, setWithdrawals] = useState<UsdtWithdrawal[]>([]);
   const [withdrawalLoading, setWithdrawalLoading] = useState(false);
 
-  // Check activation status
+  // Check activation status - ONLY when authenticated
   const checkActivation = useCallback(async () => {
-    if (!user) return;
+    if (!user || !isAuthReady) return;
     
     try {
       setActivationLoading(true);
@@ -55,14 +55,15 @@ export const useUsdtWallet = (): UsdtWalletState => {
       setActivationStatus(status);
     } catch (error) {
       console.error('[USDT Wallet] Error checking activation:', error);
+      // Don't retry on 401 - let auth context handle it
     } finally {
       setActivationLoading(false);
     }
-  }, [user]);
+  }, [user, isAuthReady]);
 
-  // Load deposits
+  // Load deposits - ONLY when authenticated
   const refreshDeposits = useCallback(async () => {
-    if (!user) return;
+    if (!user || !isAuthReady) return;
     
     try {
       setDepositLoading(true);
@@ -70,14 +71,15 @@ export const useUsdtWallet = (): UsdtWalletState => {
       setDeposits(data);
     } catch (error) {
       console.error('[USDT Wallet] Error loading deposits:', error);
+      // Don't retry on 401 - let auth context handle it
     } finally {
       setDepositLoading(false);
     }
-  }, [user]);
+  }, [user, isAuthReady]);
 
-  // Load withdrawals
+  // Load withdrawals - ONLY when authenticated
   const refreshWithdrawals = useCallback(async () => {
-    if (!user) return;
+    if (!user || !isAuthReady) return;
     
     try {
       setWithdrawalLoading(true);
@@ -85,10 +87,11 @@ export const useUsdtWallet = (): UsdtWalletState => {
       setWithdrawals(data);
     } catch (error) {
       console.error('[USDT Wallet] Error loading withdrawals:', error);
+      // Don't retry on 401 - let auth context handle it
     } finally {
       setWithdrawalLoading(false);
     }
-  }, [user]);
+  }, [user, isAuthReady]);
 
   // Connect wallet
   const connectWallet = useCallback(async () => {
@@ -137,18 +140,19 @@ export const useUsdtWallet = (): UsdtWalletState => {
     }
   }, [refreshWithdrawals, refreshUser]);
 
-  // Load initial data
+  // Load initial data - ONLY when user is authenticated
+  // CRITICAL: Gate behind isAuthReady to prevent 401 loops
   useEffect(() => {
-    if (user) {
+    if (user && isAuthReady) {
       checkActivation();
       refreshDeposits();
       refreshWithdrawals();
     }
-  }, [user, checkActivation, refreshDeposits, refreshWithdrawals]);
+  }, [user, isAuthReady, checkActivation, refreshDeposits, refreshWithdrawals]);
 
-  // Socket event listeners
+  // Socket event listeners - ONLY when authenticated
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isAuthReady) return;
 
     const unsubscribeDeposit = socketService.onUsdtDepositConfirmed((data) => {
       console.log('[USDT Wallet] Deposit confirmed:', data);
@@ -171,7 +175,7 @@ export const useUsdtWallet = (): UsdtWalletState => {
       unsubscribeWithdrawalCreated();
       unsubscribeWithdrawalSent();
     };
-  }, [user, refreshDeposits, refreshWithdrawals, refreshUser]);
+  }, [user, isAuthReady, refreshDeposits, refreshWithdrawals, refreshUser]);
 
   return {
     isWalletConnected: isConnected,

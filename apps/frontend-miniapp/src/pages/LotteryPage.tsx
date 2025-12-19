@@ -24,7 +24,7 @@ import api from '../services/api';
 import { socketService, RoundCompletedEvent } from '../services/socket';
 
 const LotteryPage: React.FC = () => {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, isAuthReady } = useAuth();
   const { activeRound, numbers, userStake, loading: dataLoading, error: dataError, refetch } = useLotteryData();
   const [language, setLanguage] = useState<Language>('my');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -86,18 +86,24 @@ const LotteryPage: React.FC = () => {
   }, []); // Only run once on mount
 
   // Load active auto-buy to restrict creating new ones
+  // CRITICAL: Only call when authenticated to prevent 401 loops
   useEffect(() => {
+    if (!isAuthReady || !user) return;
+    
     const loadAuto = async () => {
       try {
         const plans = await autobetService.getUserPlans();
         const active = plans.some(p => p.status === 'active');
         setHasActiveAutoBuy(active);
-      } catch {
-        // ignore
+      } catch (error: any) {
+        // Don't retry on 401 - auth context will handle it
+        if (error?.response?.status !== 401) {
+          console.error('[LotteryPage] Error loading auto-buy plans:', error);
+        }
       }
     };
     loadAuto();
-  }, [autoBuyRefreshKey]);
+  }, [autoBuyRefreshKey, isAuthReady, user]);
 
   // Listen for round:completed events via Socket.IO
   // This effect runs ONCE on mount and tracks shown rounds independently
@@ -230,7 +236,7 @@ const LotteryPage: React.FC = () => {
   };
 
   const handleBuy = async (amount: number, rounds: number, mode: PurchaseMode) => {
-    if (!user || !activeRound) return;
+    if (!user || !activeRound || !isAuthReady) return;
 
     // Check if user has TON address for deposits (not required for betting, but good to have)
     // This is just a reminder, not blocking

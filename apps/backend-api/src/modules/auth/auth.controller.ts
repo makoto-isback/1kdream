@@ -23,7 +23,13 @@ export class AuthController {
     }
     
     const user = await this.authService.validateTelegramUser(parsedData);
-    return this.authService.login(user);
+    const result = await this.authService.login(user);
+    
+    // Log JWT issuance for debugging
+    console.log('[AUTH] ✅ JWT issued for user:', user.id, 'telegramId:', user.telegramId);
+    console.log('[AUTH] ✅ JWT token length:', result.access_token?.length || 0);
+    
+    return result;
   }
 
   /**

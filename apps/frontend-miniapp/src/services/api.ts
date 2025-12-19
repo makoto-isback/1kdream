@@ -19,13 +19,20 @@ api.interceptors.request.use((config) => {
 });
 
 // Handle errors
+// CRITICAL: Do NOT reload on 401 - this causes infinite reload loops
+// Instead, let AuthContext handle auth errors gracefully
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('token');
-      window.location.reload();
+      // Token expired or invalid - remove token but DON'T reload
+      // AuthContext will handle re-authentication
+      const token = localStorage.getItem('token');
+      if (token) {
+        console.warn('[API] 401 Unauthorized - removing invalid token');
+        localStorage.removeItem('token');
+      }
+      // Do NOT reload - let the app handle auth state gracefully
     }
     return Promise.reject(error);
   }
