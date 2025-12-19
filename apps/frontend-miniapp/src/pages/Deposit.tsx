@@ -136,6 +136,7 @@ export default function Deposit() {
   };
 
   // Handle activation - defensive with try/catch and null guards
+  // Deposit address fetching is OPTIONAL and NON-BLOCKING
   const handleActivate = async () => {
     if (!isWalletConnected || !walletAddress) {
       setError('Please connect wallet first');
@@ -146,18 +147,32 @@ export default function Deposit() {
       setActivating(true);
       setError(null);
 
-      // Get platform wallet address - async, fail silently if backend fails
+      // Get platform wallet address - async, OPTIONAL, NON-BLOCKING
+      // If this fails, show warning but UI remains visible
       let walletInfo;
       try {
         walletInfo = await activationService.getWalletAddress();
-      } catch (err) {
+      } catch (err: any) {
+        // Log but don't block UI - show warning instead
+        console.error('[WALLET UI] deposit address failed, UI still visible', err);
         console.error('[Deposit] Failed to get wallet address (non-fatal):', err);
-        setError('Failed to load activation wallet address. Please try again.');
+        
+        // Show error but don't return - allow user to retry
+        setError(
+          err.response?.status === 400
+            ? 'Activation wallet address temporarily unavailable. Please try again in a moment.'
+            : 'Failed to load activation wallet address. Please try again.'
+        );
+        
+        // Don't return early - show retry button instead
+        // UI remains visible, user can retry
+        setActivating(false);
         return;
       }
 
       if (!walletInfo?.address) {
-        setError('Invalid wallet address received from server');
+        setError('Invalid wallet address received from server. Please try again.');
+        setActivating(false);
         return;
       }
 
@@ -219,6 +234,7 @@ export default function Deposit() {
   };
 
   // Handle deposit - defensive with try/catch and null guards
+  // Deposit address fetching is OPTIONAL and NON-BLOCKING
   const handleCreateDeposit = async () => {
     if (!isWalletConnected || !walletAddress) {
       setError('Please connect wallet first');
@@ -240,18 +256,32 @@ export default function Deposit() {
       setSigning(true);
       setError(null);
 
-      // Get platform wallet address - async, fail silently if backend fails
+      // Get platform wallet address - async, OPTIONAL, NON-BLOCKING
+      // If this fails, show warning but UI remains visible
       let platformWallet;
       try {
         platformWallet = await activationService.getWalletAddress();
-      } catch (err) {
+      } catch (err: any) {
+        // Log but don't block UI - show warning instead
+        console.error('[WALLET UI] deposit address failed, UI still visible', err);
         console.error('[Deposit] Failed to get platform wallet (non-fatal):', err);
-        setError('Failed to load deposit wallet address. Please try again.');
+        
+        // Show error but don't return - allow user to retry
+        setError(
+          err.response?.status === 400
+            ? 'Deposit wallet address temporarily unavailable. Please try again in a moment.'
+            : 'Failed to load deposit wallet address. Please try again.'
+        );
+        
+        // Don't return early - show retry button instead
+        // UI remains visible, user can retry
+        setSigning(false);
         return;
       }
 
       if (!platformWallet?.address) {
-        setError('Invalid deposit wallet address received from server');
+        setError('Invalid deposit wallet address received from server. Please try again.');
+        setSigning(false);
         return;
       }
 
@@ -297,9 +327,66 @@ export default function Deposit() {
   };
 
   // CRITICAL: Wallet UI must render based ONLY on isAuthReady and user
-  // Remove dependencies on socket, deposit address fetch, Telegram theme, etc.
+  // NOTHING ELSE - no API calls, no backend readiness, no deposit address
   const shouldRenderWalletUI = isAuthReady && !!user;
 
+  // Explicit log when wallet UI renders
+  useEffect(() => {
+    if (shouldRenderWalletUI) {
+      console.log('[WALLET UI] rendered', {
+        isAuthReady,
+        hasUser: !!user,
+        isWalletConnected,
+        isClientReady,
+      });
+    }
+  }, [shouldRenderWalletUI, isAuthReady, user, isWalletConnected, isClientReady]);
+
+  // Show loading ONLY before auth is ready or client not ready
+  // Once auth is ready and user exists, ALWAYS show wallet UI
+  if (!isClientReady) {
+    return (
+      <ErrorBoundary>
+        <div className="deposit">
+          <div className="container">
+            <div className="header">
+              <button className="back-btn" onClick={() => navigate('/')}>←</button>
+              <h1>{t('deposit.title')}</h1>
+            </div>
+            <div className="form-card">
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <p>Loading wallet...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
+  // If auth not ready yet, show minimal loading
+  if (!shouldRenderWalletUI) {
+    return (
+      <ErrorBoundary>
+        <div className="deposit">
+          <div className="container">
+            <div className="header">
+              <button className="back-btn" onClick={() => navigate('/')}>←</button>
+              <h1>{t('deposit.title')}</h1>
+            </div>
+            <div className="form-card">
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <p>Authenticating...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
+  // CRITICAL: Once auth is ready and user exists, ALWAYS render wallet UI
+  // No guards, no API checks, no backend readiness checks
   return (
     <ErrorBoundary>
       <div className="deposit">
@@ -317,7 +404,7 @@ export default function Deposit() {
           </span>
         </div>
 
-        {/* Telegram WebApp Required Warning */}
+        {/* Telegram WebApp Required Warning - informational only, doesn't block UI */}
         {isTelegramContext === false && (
           <div className="form-card" style={{ borderColor: '#ff6b6b', background: '#2a1a1a' }}>
             <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -336,9 +423,9 @@ export default function Deposit() {
           </div>
         )}
 
-        {/* Wallet Connection - Show when auth ready, user exists, and wallet not connected */}
-        {/* Remove dependency on Telegram context check - render based on auth state only */}
-        {shouldRenderWalletUI && !isWalletConnected && isClientReady && (
+        {/* Wallet Connection - ALWAYS show when auth ready and wallet not connected */}
+        {/* NO guards on API calls, backend readiness, or deposit address */}
+        {!isWalletConnected && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to deposit</p>
@@ -358,18 +445,8 @@ export default function Deposit() {
           </div>
         )}
 
-        {/* Loading state during SSR or initial load */}
-        {(!isClientReady || !shouldRenderWalletUI) && (
-          <div className="form-card">
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <p style={{ marginBottom: '16px' }}>
-                {!isClientReady ? 'Loading wallet...' : 'Authenticating...'}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Activation Gate */}
+        {/* Activation Gate - ALWAYS visible when wallet connected and not activated */}
+        {/* NO guards on API calls or backend readiness */}
         {isWalletConnected && !isActivated && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
@@ -381,6 +458,29 @@ export default function Deposit() {
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
                   Wallet: {shortenAddress(walletAddress)}
                 </p>
+              )}
+              {error && error.includes('wallet address') && (
+                <div style={{ padding: '12px', background: '#ffaa00', color: '#000', borderRadius: '8px', marginBottom: '16px', fontSize: '12px' }}>
+                  ⚠️ {error}
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      handleActivate();
+                    }}
+                    style={{
+                      marginLeft: '8px',
+                      padding: '4px 8px',
+                      background: '#000',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                    }}
+                  >
+                    Retry
+                  </button>
+                </div>
               )}
               <button
                 className="btn btn-primary"
@@ -398,7 +498,8 @@ export default function Deposit() {
           </div>
         )}
 
-        {/* Deposit Form */}
+        {/* Deposit Form - ALWAYS visible when wallet connected and activated */}
+        {/* NO guards on API calls or backend readiness */}
         {isWalletConnected && isActivated && (
           <>
             {walletAddress && (
@@ -432,8 +533,28 @@ export default function Deposit() {
             </div>
 
             {error && (
-              <div style={{ padding: '12px', background: '#ff4444', color: 'white', borderRadius: '8px', marginBottom: '16px' }}>
+              <div style={{ padding: '12px', background: error.includes('wallet address') ? '#ffaa00' : '#ff4444', color: error.includes('wallet address') ? '#000' : 'white', borderRadius: '8px', marginBottom: '16px' }}>
                 {error}
+                {error.includes('wallet address') && (
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      handleCreateDeposit();
+                    }}
+                    style={{
+                      marginLeft: '8px',
+                      padding: '4px 8px',
+                      background: error.includes('wallet address') ? '#000' : '#fff',
+                      color: error.includes('wallet address') ? '#fff' : '#000',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                    }}
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             )}
 
