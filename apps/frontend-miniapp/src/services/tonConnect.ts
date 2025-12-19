@@ -12,9 +12,17 @@ class TonConnectService {
   private readonly STORAGE_KEY = 'ton_wallet_info';
   private initialized: boolean = false;
 
-  // Lazy initialization - only when window is available
+  // Lazy initialization - only when window and Telegram WebApp are available
   private ensureInitialized(): void {
     if (this.initialized || typeof window === 'undefined') {
+      return;
+    }
+
+    // CRITICAL: TON Connect requires Telegram WebApp context
+    const tg = (window as any).Telegram?.WebApp;
+    if (!tg) {
+      console.warn('[TON Connect] ⚠️ Cannot initialize: Telegram WebApp context not found');
+      console.warn('[TON Connect] TON Connect requires Telegram Mini App environment');
       return;
     }
 

@@ -9,6 +9,7 @@ interface WalletContextType {
   walletAddress: string | null; // Convenience property
   isLoading: boolean;
   isClientReady: boolean;
+  isTelegramContext: boolean | null; // null = checking, true = Telegram exists, false = not in Telegram
   connect: () => Promise<void>;
   connectWallet: () => Promise<void>; // Alias for connect
   disconnect: () => Promise<void>;
@@ -23,14 +24,36 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const isClientReady = useClientReady();
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isTelegramContext, setIsTelegramContext] = useState<boolean | null>(null);
 
+  // Check for Telegram WebApp context
   useEffect(() => {
-    // Only load wallet info on client-side
     if (!isClientReady) {
       return;
     }
 
-    // Load wallet info from storage on mount
+    const checkTelegram = () => {
+      const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
+      const hasTelegram = !!tg;
+      setIsTelegramContext(hasTelegram);
+      
+      if (!hasTelegram) {
+        console.warn('[Wallet Context] ⚠️ Telegram WebApp context not found');
+        console.warn('[Wallet Context] TON Connect requires Telegram Mini App environment');
+        console.warn('[Wallet Context] Open this app from within Telegram to use wallet features');
+        setIsLoading(false);
+        return false;
+      }
+      
+      console.log('[Wallet Context] ✅ Telegram WebApp context detected');
+      return true;
+    };
+
+    if (!checkTelegram()) {
+      return;
+    }
+
+    // Load wallet info from storage on mount (only if Telegram context exists)
     const loadWallet = async () => {
       try {
         const info = tonConnectService.getWalletInfo();
@@ -53,6 +76,14 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const connect = async () => {
     if (!isClientReady) {
       throw new Error('Wallet connection not available during SSR');
+    }
+
+    if (isTelegramContext === false) {
+      throw new Error('TON Connect requires Telegram Mini App. Please open this app from within Telegram.');
+    }
+
+    if (isTelegramContext === null) {
+      throw new Error('Checking Telegram context... Please wait.');
     }
 
     try {
@@ -111,6 +142,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         walletAddress, // Convenience property
         isLoading,
         isClientReady,
+        isTelegramContext, // Expose Telegram context check
         connect,
         connectWallet: connect, // Alias
         disconnect,

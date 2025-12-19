@@ -20,6 +20,7 @@ export default function Deposit() {
     connectWallet, 
     isLoading: walletLoading,
     isClientReady: walletClientReady,
+    isTelegramContext,
     signTransaction,
     createUsdtTransferTransaction,
     createTonTransferTransaction,
@@ -42,14 +43,34 @@ export default function Deposit() {
 
   // DEBUG: Log button rendering conditions
   useEffect(() => {
+    const shouldShowButton = !isWalletConnected && isClientReady && isTelegramContext === true;
+    const shouldShowTelegramWarning = isTelegramContext === false;
+    
     console.log('[Deposit] Render state:', {
       isClientReady,
       isWalletConnected,
+      isTelegramContext,
       walletClientReady,
       walletLoading,
-      shouldShowButton: !isWalletConnected && isClientReady,
+      shouldShowButton,
+      shouldShowTelegramWarning,
     });
-  }, [isClientReady, isWalletConnected, walletClientReady, walletLoading]);
+    
+    if (!shouldShowButton && !shouldShowTelegramWarning) {
+      if (isTelegramContext === null) {
+        console.log('[Deposit] ⏳ Waiting for Telegram context check...');
+      } else if (!isClientReady) {
+        console.log('[Deposit] ⏳ Waiting for client to be ready...');
+      } else if (isWalletConnected) {
+        console.log('[Deposit] ℹ️ Wallet already connected, button hidden');
+      }
+    } else if (shouldShowTelegramWarning) {
+      console.warn('[Deposit] ⚠️ Connect Wallet button hidden: Not in Telegram Mini App');
+      console.warn('[Deposit] Open this app from within Telegram to use wallet features');
+    } else if (shouldShowButton) {
+      console.log('[Deposit] ✅ Connect Wallet button should be visible');
+    }
+  }, [isClientReady, isWalletConnected, isTelegramContext, walletClientReady, walletLoading]);
 
   useEffect(() => {
     if (user && !isActivated) {
@@ -184,8 +205,27 @@ export default function Deposit() {
           <span className="balance-value">{user ? Number(user.kyatBalance).toLocaleString() : 0} KYAT</span>
         </div>
 
-        {/* Wallet Connection */}
-        {!isWalletConnected && isClientReady && (
+        {/* Telegram WebApp Required Warning */}
+        {isTelegramContext === false && (
+          <div className="form-card" style={{ borderColor: '#ff6b6b', background: '#2a1a1a' }}>
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📱</div>
+              <h3 style={{ marginBottom: '12px', color: '#ff6b6b' }}>Telegram Mini App Required</h3>
+              <p style={{ marginBottom: '16px', color: '#ccc', fontSize: '14px' }}>
+                TON Connect wallet features require the Telegram Mini App environment.
+              </p>
+              <p style={{ marginBottom: '16px', color: '#999', fontSize: '12px' }}>
+                Please open this app from within Telegram to connect your wallet and make deposits.
+              </p>
+              <p style={{ color: '#666', fontSize: '11px' }}>
+                If you're already in Telegram, try refreshing the page.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Wallet Connection - ONLY show when Telegram context exists */}
+        {!isWalletConnected && isClientReady && isTelegramContext === true && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
               <p style={{ marginBottom: '16px' }}>Connect your TON wallet to deposit</p>
@@ -200,11 +240,13 @@ export default function Deposit() {
           </div>
         )}
 
-        {/* Loading state during SSR */}
-        {!isClientReady && (
+        {/* Loading state during SSR or Telegram check */}
+        {(!isClientReady || isTelegramContext === null) && (
           <div className="form-card">
             <div style={{ textAlign: 'center', padding: '20px' }}>
-              <p style={{ marginBottom: '16px' }}>Loading wallet...</p>
+              <p style={{ marginBottom: '16px' }}>
+                {isTelegramContext === null ? 'Checking Telegram context...' : 'Loading wallet...'}
+              </p>
             </div>
           </div>
         )}
