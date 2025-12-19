@@ -7,7 +7,7 @@ import { useWallet } from '../contexts/WalletContext';
 import { activationService } from '../services/activation';
 import { useClientReady } from '../hooks/useClientReady';
 import api from '../services/api';
-import './Deposit.css';
+import '../styles/Deposit.css';
 
 export default function Deposit() {
   const navigate = useNavigate();
