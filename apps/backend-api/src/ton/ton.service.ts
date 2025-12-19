@@ -148,7 +148,8 @@ export class TonService implements OnModuleInit {
       const addressString = address.toString({ urlSafe: true, bounceable: false });
 
       // Query TON Center API v3 for transactions - DO NOT use lt or since
-      const response = await axios.get(`${this.tonApiUrl}/getTransactions`, {
+      // v3 endpoint: GET /transactions
+      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
         params: {
           address: addressString,
           limit: 20,
@@ -244,10 +245,20 @@ export class TonService implements OnModuleInit {
 
       return processedTransactions;
     } catch (error) {
-      this.logger.error('[TON DEPOSIT] Error checking TON transfers:', error);
       if (error.response) {
-        this.logger.error('[TON DEPOSIT] API response status:', error.response.status);
-        this.logger.error('[TON DEPOSIT] API response data:', error.response.data);
+        const status = error.response.status;
+        const statusText = error.response.statusText;
+        const url = error.config?.url || 'unknown';
+        
+        if (status === 404) {
+          this.logger.error(`[TON DEPOSIT] 404 Not Found: ${url}`);
+          this.logger.error(`[TON DEPOSIT] Check TON_API_URL and endpoint path. Current URL: ${this.tonApiUrl}`);
+        } else {
+          this.logger.error(`[TON DEPOSIT] API error (${status} ${statusText}): ${url}`);
+          this.logger.error('[TON DEPOSIT] API response data:', error.response.data);
+        }
+      } else {
+        this.logger.error('[TON DEPOSIT] Error checking TON transfers:', error.message || error);
       }
       return [];
     }
@@ -341,7 +352,8 @@ export class TonService implements OnModuleInit {
       if (!tx) return 0;
 
       // Get current block height (TON Center API v3)
-      const currentBlockResponse = await axios.get(`${this.tonApiUrl}/getMasterchainInfo`, {
+      // v3 endpoint: GET /blocks/masterchain or /blocks/latest
+      const currentBlockResponse = await axios.get(`${this.tonApiUrl}/blocks/masterchain`, {
         headers: this.getTonApiHeaders(),
       });
 
@@ -394,9 +406,10 @@ export class TonService implements OnModuleInit {
 
       // Query TON Center API v3 for jetton transfers
       // USDT on TON is a jetton with specific master address
+      // v3 endpoint: GET /jetton/transfers
       const usdtJettonMaster = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs'; // USDT Jetton Master on mainnet
       
-      const response = await axios.get(`${this.tonApiUrl}/getJettonTransfers`, {
+      const response = await axios.get(`${this.tonApiUrl}/jetton/transfers`, {
         params: {
           address: addressString,
           jetton: usdtJettonMaster,
@@ -412,7 +425,21 @@ export class TonService implements OnModuleInit {
 
       return usdtTransfers;
     } catch (error) {
-      this.logger.error('Error checking USDT transfers:', error);
+      if (error.response) {
+        const status = error.response.status;
+        const statusText = error.response.statusText;
+        const url = error.config?.url || 'unknown';
+        
+        if (status === 404) {
+          this.logger.error(`[USDT] 404 Not Found: ${url}`);
+          this.logger.error(`[USDT] Check TON_API_URL and endpoint path. Current URL: ${this.tonApiUrl}`);
+        } else {
+          this.logger.error(`[USDT] API error (${status} ${statusText}): ${url}`);
+          this.logger.error('[USDT] API response data:', error.response.data);
+        }
+      } else {
+        this.logger.error('[USDT] Error checking USDT transfers:', error.message || error);
+      }
       return [];
     }
   }
@@ -432,17 +459,39 @@ export class TonService implements OnModuleInit {
 
     try {
       // TON Center API v3: Get transaction by hash
-      // Try to get transaction by hash directly
-      const response = await axios.get(`${this.tonApiUrl}/getTransaction`, {
+      // v3 endpoint: GET /transactions with hash filter
+      // Note: v3 may require address + hash, or use different endpoint
+      // For now, try to get from transactions endpoint with hash
+      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
         params: {
           hash: txHash,
         },
         headers: this.getTonApiHeaders(),
       });
       // TON Center API v3 wraps result in result field
-      return response.data?.result || response.data || null;
+      const transactions = response.data?.result || [];
+      // If multiple results, find the one matching hash
+      if (transactions.length > 0) {
+        return transactions.find((tx: any) => 
+          tx.hash === txHash || tx.transaction_id === txHash || tx.tx_hash === txHash
+        ) || transactions[0];
+      }
+      return null;
     } catch (error) {
-      this.logger.error(`Error getting transaction ${txHash}:`, error);
+      if (error.response) {
+        const status = error.response.status;
+        const statusText = error.response.statusText;
+        const url = error.config?.url || 'unknown';
+        
+        if (status === 404) {
+          this.logger.error(`[TON API] 404 Not Found: ${url} (txHash: ${txHash})`);
+          this.logger.error(`[TON API] Check TON_API_URL and endpoint path. Current URL: ${this.tonApiUrl}`);
+        } else {
+          this.logger.error(`[TON API] API error (${status} ${statusText}): ${url}`);
+        }
+      } else {
+        this.logger.error(`[TON API] Error getting transaction ${txHash}:`, error.message || error);
+      }
       return null;
     }
   }
@@ -533,8 +582,8 @@ export class TonService implements OnModuleInit {
   ): Promise<Address> {
     try {
       // Query jetton wallet address from jetton master
-      // TON Center API v3: GET /getJettonWallet?address=<wallet>&jetton=<master>
-      const response = await axios.get(`${this.tonApiUrl}/getJettonWallet`, {
+      // TON Center API v3: GET /jetton/wallet?address=<wallet>&jetton=<master>
+      const response = await axios.get(`${this.tonApiUrl}/jetton/wallet`, {
         params: {
           address: walletAddress.toString({ urlSafe: true, bounceable: false }),
           jetton: jettonMasterAddress.toString({ urlSafe: true, bounceable: false }),
@@ -582,14 +631,13 @@ export class TonService implements OnModuleInit {
    */
   private async getWalletSeqno(walletAddress: Address): Promise<number> {
     try {
-      const response = await axios.get(`${this.tonApiUrl}/getAddressInformation`, {
-        params: {
-          address: walletAddress.toString({ urlSafe: true, bounceable: false }),
-        },
+      // TON Center API v3: GET /accounts/{address}
+      const addressString = walletAddress.toString({ urlSafe: true, bounceable: false });
+      const response = await axios.get(`${this.tonApiUrl}/accounts/${addressString}`, {
         headers: this.getTonApiHeaders(),
       });
 
-      return response.data?.result?.seqno || 0;
+      return response.data?.result?.seqno || response.data?.seqno || 0;
     } catch (error) {
       this.logger.error('[USDT WITHDRAWAL] Error getting wallet seqno:', error);
       return 0; // Default to 0 if API fails

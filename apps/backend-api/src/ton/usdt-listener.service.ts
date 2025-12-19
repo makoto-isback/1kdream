@@ -8,6 +8,7 @@ import { DepositsService } from '../modules/wallet/deposits/deposits.service';
 export class UsdtListenerService implements OnModuleInit {
   private readonly logger = new Logger(UsdtListenerService.name);
   private lastCheckedTimestamp: number = Date.now();
+  private isEnabled: boolean = false; // Track if listener is enabled
 
   constructor(
     private tonService: TonService,
@@ -23,15 +24,18 @@ export class UsdtListenerService implements OnModuleInit {
     if (isDev) {
       this.logger.warn('🔧 Development mode: TON USDT listener is DISABLED');
       this.logger.warn('📝 Use admin endpoints to manually confirm deposits');
+      this.isEnabled = false;
       return;
     }
 
     if (!usdtDepositsEnabled) {
       this.logger.warn('🔧 USDT deposit listener is DISABLED (USDT_ENABLE_DEPOSITS !== true)');
       this.logger.warn('📝 Use admin endpoints to manually confirm deposits');
+      this.isEnabled = false;
       return;
     }
 
+    this.isEnabled = true;
     this.startListening();
   }
 
@@ -40,16 +44,26 @@ export class UsdtListenerService implements OnModuleInit {
    */
   @Cron('*/30 * * * * *') // Every 30 seconds
   async checkForDeposits() {
-    // Guard: Skip if USDT deposits are disabled
-    const usdtDepositsEnabled = this.configService.get('USDT_ENABLE_DEPOSITS') === 'true';
-    if (!usdtDepositsEnabled) {
+    // Guard: Skip if listener is not enabled
+    if (!this.isEnabled) {
       return; // Silently skip if disabled
     }
 
+    // Double-check config flag (in case it changed at runtime)
+    const usdtDepositsEnabled = this.configService.get('USDT_ENABLE_DEPOSITS') === 'true';
+    if (!usdtDepositsEnabled) {
+      this.isEnabled = false; // Disable listener if flag changed
+      return;
+    }
+
     try {
-      this.logger.debug('Checking for new USDT deposits...');
+      this.logger.debug('[USDT LISTENER] Checking for new USDT deposits...');
       
       const transfers = await this.tonService.checkUsdtTransfers(this.lastCheckedTimestamp);
+      
+      if (transfers.length > 0) {
+        this.logger.debug(`[USDT LISTENER] Found ${transfers.length} jetton transfers`);
+      }
       
       for (const transfer of transfers) {
         const usdtAmount = this.tonService.parseUsdtAmount(transfer);
@@ -63,7 +77,7 @@ export class UsdtListenerService implements OnModuleInit {
 
       this.lastCheckedTimestamp = Date.now();
     } catch (error) {
-      this.logger.error('Error checking for deposits:', error);
+      this.logger.error('[USDT LISTENER] Error checking for deposits:', error);
     }
   }
 
@@ -111,7 +125,12 @@ export class UsdtListenerService implements OnModuleInit {
    * Start listening (called on app startup)
    */
   async startListening() {
-    this.logger.log('USDT deposit listener started');
+    if (!this.isEnabled) {
+      this.logger.warn('[USDT LISTENER] Cannot start - listener is disabled');
+      return;
+    }
+    
+    this.logger.log('[USDT LISTENER] USDT deposit listener started');
     this.lastCheckedTimestamp = Date.now();
     // Initial check
     await this.checkForDeposits();
