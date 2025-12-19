@@ -8,27 +8,19 @@ import Deposit from './pages/Deposit';
 import './styles/index.css';
 
 function AppContent() {
-  const { authError } = useAuth();
+  const { authError, loading: authLoading } = useAuth();
   const isDev = import.meta.env.DEV;
 
-  // Show Telegram WebApp required message in production
-  if (authError === 'TELEGRAM_WEBAPP_REQUIRED' && !isDev) {
-    return (
-      <div className="min-h-screen bg-ios-bg-primary text-white font-sans flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <div className="text-4xl mb-4">📱</div>
-          <h1 className="text-2xl font-bold mb-4">Telegram Mini App Required</h1>
-          <p className="text-ios-label-secondary mb-6">
-            This application must be opened from within Telegram. Please open this link from a Telegram bot or channel.
-          </p>
-          <p className="text-sm text-ios-label-secondary">
-            If you're already in Telegram, try refreshing the page.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // DEBUG: Log auth state
+  useEffect(() => {
+    console.log('[AppContent] Auth state:', { authError, authLoading, isDev });
+  }, [authError, authLoading, isDev]);
 
+  // CRITICAL FIX: Router must ALWAYS render, even with auth errors
+  // The early return was preventing /deposit route from ever mounting
+  // Individual pages can handle auth errors gracefully
+  // This allows the Connect Wallet button to render regardless of auth state
+  
   return (
     <Router>
       <Routes>

@@ -40,6 +40,17 @@ export default function Deposit() {
   const [activationTxHash, setActivationTxHash] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // DEBUG: Log button rendering conditions
+  useEffect(() => {
+    console.log('[Deposit] Render state:', {
+      isClientReady,
+      isWalletConnected,
+      walletClientReady,
+      walletLoading,
+      shouldShowButton: !isWalletConnected && isClientReady,
+    });
+  }, [isClientReady, isWalletConnected, walletClientReady, walletLoading]);
+
   useEffect(() => {
     if (user && !isActivated) {
       checkActivation();
