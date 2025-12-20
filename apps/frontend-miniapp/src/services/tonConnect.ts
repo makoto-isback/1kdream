@@ -86,6 +86,22 @@ class TonConnectService {
       // INVARIANT: Only accept connections with address AND session proof
       // Reject support-assisted mode (no UI opened, no user approval)
       this.connector.onStatusChange((wallet) => {
+        // CRITICAL: Add detailed logging to debug connection issues
+        console.log('[TON Connect] 🔔 onStatusChange fired:', {
+          hasWallet: !!wallet,
+          hasAccount: !!wallet?.account,
+          hasAddress: !!wallet?.account?.address,
+          address: wallet?.account?.address,
+          device: (wallet as any)?.device,
+          provider: (wallet as any)?.provider,
+          walletAppName: (wallet as any)?.walletAppName,
+          connectItems: (wallet as any)?.connectItems,
+          proof: (wallet as any)?.proof,
+          // Log full wallet object structure for debugging
+          walletKeys: wallet ? Object.keys(wallet) : [],
+          accountKeys: wallet?.account ? Object.keys(wallet.account) : []
+        });
+        
         if (wallet?.account?.address) {
           // CRITICAL: Verify this is a real connection, not support-assisted mode
           // Support-assisted mode has address but no session proof
@@ -246,6 +262,16 @@ class TonConnectService {
       // NEVER assume injected wallet exists - SDK will handle environment detection
       const walletsList = await this.connector.getWallets();
       
+      // Log all available wallets for debugging
+      console.log('[TON Connect] Available wallets:', walletsList.map(w => ({
+        name: w.name,
+        appName: (w as any).appName,
+        universalLink: w.universalLink,
+        bridgeUrl: w.bridgeUrl,
+        aboutUrl: (w as any).aboutUrl,
+        imageUrl: (w as any).imageUrl
+      })));
+      
       if (walletsList.length === 0) {
         throw new Error('No TON wallets available. Please install a TON wallet app.');
       }
@@ -269,18 +295,39 @@ class TonConnectService {
       
       if (isTelegramMiniApp) {
         // In Telegram Mini App, find Telegram Wallet specifically
-        const telegramWallet = availableWallets.find(w => 
-          w.name.toLowerCase().includes('telegram') || 
-          w.appName?.toLowerCase().includes('telegram') ||
-          w.aboutUrl?.includes('telegram')
-        );
+        // Try multiple ways to identify Telegram Wallet
+        // According to TON docs, Telegram Wallet should be available in Mini App
+        const telegramWallet = availableWallets.find(w => {
+          const name = (w.name || '').toLowerCase();
+          const appName = ((w as any).appName || '').toLowerCase();
+          const universalLink = (w.universalLink || '').toLowerCase();
+          const aboutUrl = ((w as any).aboutUrl || '').toLowerCase();
+          
+          // Telegram Wallet identifiers (multiple checks for reliability)
+          return name.includes('telegram') || 
+                 name === 'wallet' ||  // Sometimes just called "Wallet" in Telegram
+                 appName.includes('telegram') ||
+                 universalLink.includes('telegram') ||
+                 universalLink.includes('t.me') ||
+                 aboutUrl.includes('telegram');
+        });
         
         if (!telegramWallet) {
+          console.error('[TON Connect] ❌ Telegram Wallet not found in Telegram Mini App');
+          console.error('[TON Connect] Available wallets:', availableWallets.map(w => ({
+            name: w.name,
+            appName: (w as any).appName
+          })));
           throw new Error('Telegram Wallet not found. Please ensure Telegram Wallet is available in your Telegram app.');
         }
         
         walletToConnect = telegramWallet;
-        console.log('[TON Connect] Telegram Mini App detected - connecting to Telegram Wallet:', walletToConnect.name);
+        console.log('[TON Connect] ✅ Telegram Mini App - Selected wallet:', {
+          name: walletToConnect.name,
+          appName: (walletToConnect as any).appName,
+          hasUniversalLink: !!walletToConnect.universalLink,
+          hasBridgeUrl: !!walletToConnect.bridgeUrl
+        });
       } else {
         // In browser, prefer Telegram Wallet but allow others
         const telegramWallet = availableWallets.find(w => 
@@ -295,6 +342,8 @@ class TonConnectService {
       }
       
       // CRITICAL: Use connect() with wallet object - SDK MUST show UI
+      // According to TON docs, in Telegram Mini App, connector.connect() should
+      // automatically open Telegram Wallet UI for user approval
       // This works in:
       // - Telegram Mini App → Opens Telegram Wallet (user must approve)
       // - Mobile browser → Deep link to wallet app (user must approve)
@@ -302,8 +351,9 @@ class TonConnectService {
       // 
       // INVARIANT: If no UI opens, connection will be rejected by onStatusChange
       // (support-assisted mode has no session proof and will be filtered out)
+      console.log('[TON Connect] 🔄 Calling connector.connect() with wallet:', walletToConnect.name);
       await this.connector.connect(walletToConnect);
-      console.log('[TON Connect] Connection initiated - waiting for user approval in Telegram Wallet');
+      console.log('[TON Connect] ✅ Connection request sent - waiting for user approval in Telegram Wallet');
       
       // In Telegram Mini App, don't wait - let onStatusChange handle the result
       // The wallet UI will open and user will approve/reject

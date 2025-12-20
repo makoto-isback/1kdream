@@ -85,21 +85,33 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     // This allows wallet state updates without blocking UI
     // Initialization happens lazily when user clicks connect()
     const unsubscribe = tonConnectService.onStatusChange((wallet) => {
+      // Add detailed logging to debug connection flow
+      console.log('[Wallet Context] 🔔 onStatusChange callback:', {
+        hasWallet: !!wallet,
+        hasAddress: !!wallet?.address,
+        address: wallet?.address,
+        isConnecting: isConnecting
+      });
+      
       if (wallet?.address) {
-        console.log('[WALLET CONNECT] connected:', wallet.address);
+        console.log('[Wallet Context] ✅ Wallet connected:', wallet.address);
         setWalletAddress(wallet.address);
         // Get wallet type from stored info (doesn't trigger initialization)
         const storedInfo = tonConnectService.getWalletInfo();
         if (storedInfo) {
           setWalletType(storedInfo.walletType);
+          console.log('[Wallet Context] Wallet type:', storedInfo.walletType);
         }
         // CRITICAL: Reset connecting state when connection succeeds
         setIsConnecting(false);
+        console.log('[Wallet Context] ✅ Connection complete - isConnecting set to false');
       } else {
+        console.log('[Wallet Context] ⚠️ Wallet disconnected or no address');
         setWalletAddress(null);
         setWalletType('unknown');
         // CRITICAL: Reset connecting state when connection fails or disconnects
         setIsConnecting(false);
+        console.log('[Wallet Context] ⚠️ Connection failed/disconnected - isConnecting set to false');
       }
       // No need to set isLoading here - it's only for connection attempts
     });
