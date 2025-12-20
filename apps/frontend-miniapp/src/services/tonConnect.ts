@@ -283,7 +283,26 @@ class TonConnectService {
     }
 
     try {
-      // Check if already connected - but verify it's a real connection
+      // CRITICAL: Check if already connected BEFORE calling openModal()
+      // Both TonConnectUI and TonConnectSDK share the same storage
+      // If walletInfo exists, both are likely connected
+      // TonConnectUI.openModal() will throw an error if already connected
+      if (this.walletInfo?.address) {
+        console.log('[TON Connect] Wallet already connected, disconnecting first to allow reconnection');
+        // Disconnect SDK first (this also clears shared storage)
+        if (this.connector.connected) {
+          await this.connector.disconnect();
+        }
+        // Clear our stored wallet info
+        this.walletInfo = null;
+        this.saveWalletToStorage(null);
+        // Notify callbacks that we disconnected
+        this.statusChangeCallbacks.forEach(cb => cb(null));
+        // Small delay to ensure disconnect completes
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Also check connector.connected as a fallback
       if (this.connector.connected) {
         // Verify existing connection has session proof (not support-assisted)
         // Note: connector.wallet might not be directly accessible, so we check our stored info
