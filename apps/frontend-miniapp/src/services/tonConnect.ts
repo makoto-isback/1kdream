@@ -6,11 +6,14 @@ export interface WalletInfo {
   connected: boolean;
 }
 
+type StatusChangeCallback = (wallet: { address: string } | null) => void;
+
 class TonConnectService {
   private connector: TonConnectSDK | null = null;
   private walletInfo: WalletInfo | null = null;
   private readonly STORAGE_KEY = 'ton_wallet_info';
   private initialized: boolean = false;
+  private statusChangeCallbacks: StatusChangeCallback[] = [];
 
   // Lazy initialization - only when window and Telegram WebApp are available
   private ensureInitialized(): void {
@@ -54,9 +57,9 @@ class TonConnectService {
         manifest: manifest as any,
       });
 
-      // Listen for connection events
+      // Listen for connection events - this is the ONLY place we read account.address
       this.connector.onStatusChange((wallet) => {
-        if (wallet) {
+        if (wallet?.account?.address) {
           const walletInfo: WalletInfo = {
             address: wallet.account.address,
             walletType: wallet.account.walletAppName || 'unknown',
@@ -64,9 +67,15 @@ class TonConnectService {
           };
           this.walletInfo = walletInfo;
           this.saveWalletToStorage(walletInfo);
+          
+          // Notify all callbacks
+          this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
         } else {
           this.walletInfo = null;
           this.saveWalletToStorage(null);
+          
+          // Notify all callbacks
+          this.statusChangeCallbacks.forEach(cb => cb(null));
         }
       });
     } catch (error) {
@@ -82,7 +91,12 @@ class TonConnectService {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
-        this.walletInfo = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        this.walletInfo = parsed;
+        // Notify callbacks if we have stored wallet info
+        if (parsed?.address) {
+          this.statusChangeCallbacks.forEach(cb => cb({ address: parsed.address }));
+        }
       }
     } catch (error) {
       console.error('[TON Connect] Failed to load wallet from storage:', error);
@@ -105,7 +119,22 @@ class TonConnectService {
     }
   }
 
-  async connect(): Promise<WalletInfo> {
+  // Register callback for status changes
+  onStatusChange(callback: StatusChangeCallback): () => void {
+    this.statusChangeCallbacks.push(callback);
+    
+    // Immediately call with current state if available
+    if (this.walletInfo?.address) {
+      callback({ address: this.walletInfo.address });
+    }
+    
+    // Return unsubscribe function
+    return () => {
+      this.statusChangeCallbacks = this.statusChangeCallbacks.filter(cb => cb !== callback);
+    };
+  }
+
+  async connect(): Promise<void> {
     this.ensureInitialized();
 
     if (!this.connector) {
@@ -113,17 +142,11 @@ class TonConnectService {
     }
 
     try {
-      // Check if already connected
+      // Check if already connected - but don't read account.address here
       if (this.connector.connected) {
-        const account = this.connector.account!;
-        const walletInfo: WalletInfo = {
-          address: account.address,
-          walletType: account.walletAppName || 'unknown',
-          connected: true,
-        };
-        this.walletInfo = walletInfo;
-        this.saveWalletToStorage(walletInfo);
-        return walletInfo;
+        console.log('[TON Connect] Already connected, waiting for onStatusChange');
+        // Don't read account.address - let onStatusChange handle it
+        return;
       }
 
       // Get available wallets
@@ -142,25 +165,15 @@ class TonConnectService {
 
       // Connect to wallet
       // Note: This will open the wallet app for connection
-      // After first connection, subsequent transactions can be signed silently if wallet supports it
+      // After connection, onStatusChange will fire with wallet info
       const connectionSource = {
         universalLink: walletToConnect.universalLink,
         bridgeUrl: walletToConnect.bridgeUrl,
       };
 
       await this.connector.connect(connectionSource);
-
-      // Get account info after connection
-      const account = this.connector.account!;
-      const walletInfo: WalletInfo = {
-        address: account.address,
-        walletType: account.walletAppName || walletToConnect.name,
-        connected: true,
-      };
-
-      this.walletInfo = walletInfo;
-      this.saveWalletToStorage(walletInfo);
-      return walletInfo;
+      console.log('[TON Connect] connect() triggered');
+      // ❗ DO NOT read wallet/account here - onStatusChange will handle it
     } catch (error) {
       console.error('[TON Connect] Connection error:', error);
       throw error;
@@ -199,7 +212,7 @@ class TonConnectService {
     return this.connector?.connected || false;
   }
 
-  async signTransaction(transaction: any): Promise<string> {
+  async sendTransaction(transaction: any): Promise<string> {
     this.ensureInitialized();
 
     if (!this.connector || !this.connector.connected) {
@@ -217,6 +230,11 @@ class TonConnectService {
       console.error('[TON Connect] Sign transaction error:', error);
       throw error;
     }
+  }
+
+  // Alias for sendTransaction (for backward compatibility)
+  async signTransaction(transaction: any): Promise<string> {
+    return this.sendTransaction(transaction);
   }
 
   // Helper to create USDT jetton transfer transaction
@@ -238,15 +256,26 @@ class TonConnectService {
     };
   }
 
-  // Helper to create 1 TON transfer transaction (for activation fee)
+  // Helper to create TON transfer transaction with optional comment
   createTonTransferTransaction(
     toAddress: string,
-    amount: string = '1', // 1 TON
+    amount: string = '1', // Amount in TON
+    comment?: string, // Optional comment/memo
   ): any {
-    return {
+    const transaction: any = {
       address: toAddress,
       amount: amount,
     };
+    
+    // Add comment as body if provided
+    // TON Connect supports text comments in the message body
+    if (comment) {
+      // For TON transfers, comments are sent as text in the message body
+      // The backend will extract this when indexing transactions
+      transaction.body = comment;
+    }
+    
+    return transaction;
   }
 
   private createJettonTransferPayload(toAddress: string, jettonAmount: string): string {

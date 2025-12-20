@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { tonConnectService, WalletInfo } from '../services/tonConnect';
+import { tonConnectService } from '../services/tonConnect';
 import { useClientReady } from '../hooks/useClientReady';
 
 interface WalletContextType {
-  walletInfo: WalletInfo | null;
+  walletInfo: { address: string; walletType: string; connected: boolean } | null;
   isConnected: boolean;
   isWalletConnected: boolean; // Alias for isConnected
   walletAddress: string | null; // Convenience property
@@ -15,14 +15,15 @@ interface WalletContextType {
   disconnect: () => Promise<void>;
   signTransaction: (transaction: any) => Promise<string>;
   createUsdtTransferTransaction: (toAddress: string, amount: string) => any;
-  createTonTransferTransaction: (toAddress: string, amount?: string) => any;
+  createTonTransferTransaction: (toAddress: string, amount?: string, comment?: string) => any;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const isClientReady = useClientReady();
-  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletType, setWalletType] = useState<string>('unknown');
   const [isLoading, setIsLoading] = useState(true);
   const [isTelegramContext, setIsTelegramContext] = useState<boolean | null>(null);
 
@@ -62,26 +63,27 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    // Load wallet info from storage on mount (only if Telegram context exists)
-    // Async, non-blocking, fail silently
-    const loadWallet = async () => {
-      try {
-        const info = tonConnectService.getWalletInfo();
-        if (info && tonConnectService.isConnected()) {
-          setWalletInfo(info);
-        } else {
-          setWalletInfo(null);
+    // Listen to TON Connect status changes - this is the ONLY way to get wallet address
+    const unsubscribe = tonConnectService.onStatusChange((wallet) => {
+      if (wallet?.address) {
+        console.log('[WALLET CONNECT] connected:', wallet.address);
+        setWalletAddress(wallet.address);
+        // Get wallet type from stored info
+        const storedInfo = tonConnectService.getWalletInfo();
+        if (storedInfo) {
+          setWalletType(storedInfo.walletType);
         }
-      } catch (error) {
-        // Log but don't throw - wallet loading failure shouldn't crash UI
-        console.error('[Wallet Context] Failed to load wallet (non-fatal):', error);
-        setWalletInfo(null);
-      } finally {
-        setIsLoading(false);
+      } else {
+        setWalletAddress(null);
+        setWalletType('unknown');
       }
-    };
+      setIsLoading(false);
+    });
 
-    loadWallet();
+    // Cleanup on unmount
+    return () => {
+      unsubscribe();
+    };
   }, [isClientReady]);
 
   const connect = async () => {
@@ -99,14 +101,14 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       setIsLoading(true);
-      const info = await tonConnectService.connect();
-      setWalletInfo(info);
+      await tonConnectService.connect();
+      // ❗ DO NOT read wallet address here - onStatusChange will update state
+      console.log('[Wallet Context] Connect triggered, waiting for onStatusChange');
     } catch (error) {
       // Log error but rethrow so UI can show error message
       console.error('[Wallet Context] Connect error:', error);
-      throw error;
-    } finally {
       setIsLoading(false);
+      throw error;
     }
   };
 
@@ -118,12 +120,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     try {
       setIsLoading(true);
       await tonConnectService.disconnect();
-      setWalletInfo(null);
+      // onStatusChange will update walletAddress to null
     } catch (error) {
       console.error('[Wallet Context] Disconnect error:', error);
-      throw error;
-    } finally {
       setIsLoading(false);
+      throw error;
     }
   };
 
@@ -138,12 +139,16 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return tonConnectService.createUsdtTransferTransaction(toAddress, amount);
   };
 
-  const createTonTransferTransaction = (toAddress: string, amount?: string) => {
-    return tonConnectService.createTonTransferTransaction(toAddress, amount);
+  const createTonTransferTransaction = (toAddress: string, amount?: string, comment?: string) => {
+    return tonConnectService.createTonTransferTransaction(toAddress, amount, comment);
   };
 
-  const isConnected = !!walletInfo?.connected;
-  const walletAddress = walletInfo?.address || null;
+  const isConnected = !!walletAddress;
+  const walletInfo = walletAddress ? {
+    address: walletAddress,
+    walletType,
+    connected: true,
+  } : null;
 
   return (
     <WalletContext.Provider

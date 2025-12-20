@@ -1,13 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { GlassCard } from './GlassCard';
 import { Language, WalletTab } from '../types/ui';
 import { TRANSLATIONS } from '../constants/translations';
 import { Icons } from './Icons';
-import { walletService } from '../services/wallet';
 import { User } from '../services/users';
-import { validateWithdrawal } from '../utils/validation';
-import WebApp from '@twa-dev/sdk';
-import { TonAddressModal } from './TonAddressModal';
+import { useWallet } from '../contexts/WalletContext';
+import { TON_TREASURY_ADDRESS, USDT_TREASURY_ADDRESS } from '../constants/treasury';
 
 interface Props {
   language: Language;
@@ -19,122 +17,245 @@ interface Props {
 }
 
 export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balance, user, onRefresh }) => {
+  console.log('[WALLET MODAL] support-assisted mode active');
+  
+  // Wallet context
+  const {
+    isWalletConnected,
+    walletAddress,
+    connectWallet,
+    isLoading: walletLoading,
+    isTelegramContext,
+    signTransaction,
+    createUsdtTransferTransaction,
+    createTonTransferTransaction,
+  } = useWallet();
+
   const [activeTab, setActiveTab] = useState<WalletTab>(WalletTab.BALANCE);
-  const [depositAddress, setDepositAddress] = useState<string>('');
-  const [depositMemo, setDepositMemo] = useState<string>('');
+  const [depositAmount, setDepositAmount] = useState<string>('');
+  const [depositUsdtAmount, setDepositUsdtAmount] = useState<string>('');
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
+  const [withdrawUsdtAmount, setWithdrawUsdtAmount] = useState<string>('');
   const [tonAddress, setTonAddress] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [dailyWithdrawn, setDailyWithdrawn] = useState<number>(0);
-  const [showTonAddressModal, setShowTonAddressModal] = useState(false);
-  const [withdrawMode, setWithdrawMode] = useState<'request' | 'support' | null>(null);
+  
+  // Deposit transaction state
+  const [isSendingTx, setIsSendingTx] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [txSuccess, setTxSuccess] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<'TON' | 'USDT' | null>(null);
+  
+  // Withdraw transaction state (separate from deposit)
+  const [isSendingWithdrawTx, setIsSendingWithdrawTx] = useState(false);
+  const [withdrawTxError, setWithdrawTxError] = useState<string | null>(null);
+  const [withdrawTxSuccess, setWithdrawTxSuccess] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && activeTab === WalletTab.DEPOSIT) {
-      fetchDepositAddress();
-    }
-    if (isOpen && activeTab === WalletTab.WITHDRAW) {
-      fetchDailyWithdrawn();
-    }
-  }, [isOpen, activeTab]);
-
-  const fetchDepositAddress = async () => {
-    try {
-      const response = await walletService.getDepositAddress();
-      setDepositAddress(response.address);
-      setDepositMemo(response.memo);
-    } catch (err) {
-      console.error('Error fetching deposit address:', err);
-    }
-  };
-
-  const fetchDailyWithdrawn = async () => {
-    try {
-      const withdrawals = await walletService.getUserWithdrawals();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayWithdrawals = withdrawals.filter(w => {
-        const createdAt = new Date(w.createdAt);
-        return createdAt >= today && w.status === 'completed';
-      });
-      const total = todayWithdrawals.reduce((sum, w) => sum + w.kyatAmount, 0);
-      setDailyWithdrawn(total);
-    } catch (err) {
-      console.error('Error fetching withdrawals:', err);
-    }
-  };
-
-  const handleCopyAddress = () => {
-    if (!depositAddress) return;
-    navigator.clipboard.writeText(depositAddress);
-    setSuccess(language === 'my' ? 'လိပ်စာ ကူးယူပြီးပါပြီ' : 'Address copied');
-    setTimeout(() => setSuccess(null), 3000);
-  };
-
-  const handleCopyMemo = () => {
-    if (!depositMemo) return;
-    navigator.clipboard.writeText(depositMemo);
-    setSuccess(language === 'my' ? 'Memo ကူးယူပြီးပါပြီ' : 'Memo copied');
-    setTimeout(() => setSuccess(null), 3000);
-  };
-
-  const handleWithdraw = async () => {
-    if (!user) return;
-
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const amount = parseFloat(withdrawAmount);
-      
-      // Validate
-      const validation = validateWithdrawal(amount, dailyWithdrawn, language);
-      if (!validation.valid) {
-        setError(validation.error || 'Invalid withdrawal');
-        setLoading(false);
-        return;
-      }
-
-      // Check if user has TON address registered
-      if (!user.tonAddress && !tonAddress) {
-        setError(language === 'my' ? 'ကျေးဇူးပြု၍ TON လိပ်စာထည့်သွင်းပါ' : 'Please enter your TON address');
-        setLoading(false);
-        return;
-      }
-
-      const addressToUse = user.tonAddress || tonAddress;
-
-      await walletService.createWithdrawalRequest({
-        kyatAmount: amount,
-        tonAddress: addressToUse,
-      });
-
-      setSuccess(language === 'my' ? 'ငွေထုတ်ယူမှု တောင်းဆိုမှု အောင်မြင်ပါသည်' : 'Withdrawal requested successfully');
-      await onRefresh();
-      await fetchDailyWithdrawn();
-      setWithdrawAmount('');
-      setTonAddress('');
-      setWithdrawMode(null);
-      
-      setTimeout(() => {
-        setActiveTab(WalletTab.BALANCE);
-        setSuccess(null);
-      }, 2000);
-    } catch (err: any) {
-      setError(err.response?.data?.message || (language === 'my' ? 'ငွေထုတ်ယူမှု မအောင်မြင်ပါ' : 'Withdrawal failed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Contact Support helper
   const handleContactSupport = () => {
-    // Open Telegram support
-    const supportUsername = 'your_support_bot'; // Replace with actual support bot
-    WebApp.openTelegramLink(`https://t.me/${supportUsername}`);
+    const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : null;
+    if (tg) {
+      // Use Telegram Mini App method
+      tg.openTelegramLink('https://t.me/onekadmin');
+    } else {
+      // Fallback for non-Telegram environments
+      window.open('https://t.me/onekadmin', '_blank');
+    }
   };
+
+  // Handle wallet connection
+  const handleConnectWallet = async () => {
+    try {
+      setTxError(null);
+      await connectWallet();
+      console.log('[WALLET CONNECT] connected');
+    } catch (error: any) {
+      console.error('[WALLET CONNECT] connection failed:', error);
+      setTxError(error?.message || (language === 'my' ? 'Wallet ချိတ်ဆက်မှု မအောင်မြင်ပါ' : 'Failed to connect wallet'));
+    }
+  };
+
+  // Handle withdraw request
+  const handleRequestWithdraw = async () => {
+    if (!user?.id) {
+      setWithdrawTxError(language === 'my' ? 'User ID မရှိပါ' : 'User ID not found');
+      return;
+    }
+
+    const kyatAmount = parseFloat(withdrawAmount);
+    const destinationAddress = user.tonAddress || tonAddress;
+
+    // Validation
+    if (!withdrawAmount || kyatAmount <= 0) {
+      setWithdrawTxError(language === 'my' ? 'ပမာဏ ထည့်သွင်းပါ' : 'Please enter amount');
+      return;
+    }
+
+    if (kyatAmount < 10000) {
+      setWithdrawTxError(language === 'my' ? 'အနည်းဆုံး 10,000 KYAT လိုအပ်ပါသည်' : 'Minimum withdrawal is 10,000 KYAT');
+      return;
+    }
+
+    if (kyatAmount > 5000000) {
+      setWithdrawTxError(language === 'my' ? 'အများဆုံး 5,000,000 KYAT ဖြစ်ပါသည်' : 'Maximum withdrawal is 5,000,000 KYAT');
+      return;
+    }
+
+    if (!destinationAddress || destinationAddress.trim() === '') {
+      setWithdrawTxError(language === 'my' ? 'TON လိပ်စာ ထည့်သွင်းပါ' : 'Please enter TON address');
+      return;
+    }
+
+    try {
+      setIsSendingWithdrawTx(true);
+      setWithdrawTxError(null);
+      setWithdrawTxSuccess(false);
+
+      console.log('[WITHDRAW] request started', { userId: user.id, kyatAmount, destinationAddress });
+
+      // Create memo: withdraw:<userId>:<kyatAmount>:<destinationAddress>
+      const memo = `withdraw:${user.id}:${kyatAmount}:${destinationAddress.trim()}`;
+
+      // Send 0.1 TON to treasury (request fee, NOT the withdraw amount)
+      const transaction = createTonTransferTransaction(TON_TREASURY_ADDRESS, '0.1', memo);
+
+      console.log('[WITHDRAW] sending request tx');
+
+      // Sign and send transaction
+      await signTransaction(transaction);
+
+      console.log('[WITHDRAW] request submitted');
+      setWithdrawTxSuccess(true);
+      setWithdrawTxError(null);
+      
+      // Clear form after successful send
+      setTimeout(() => {
+        setWithdrawAmount('');
+        setWithdrawUsdtAmount('');
+        setTonAddress('');
+        setWithdrawTxSuccess(false);
+      }, 5000);
+    } catch (error: any) {
+      console.error('[WITHDRAW] request failed', error);
+      setWithdrawTxError(error?.message || (language === 'my' ? 'Withdraw request ပို့ဆောင်မှု မအောင်မြင်ပါ' : 'Withdraw request failed'));
+      setWithdrawTxSuccess(false);
+    } finally {
+      setIsSendingWithdrawTx(false);
+    }
+  };
+
+  // Handle deposit transaction
+  const handleSendDeposit = async (asset: 'TON' | 'USDT') => {
+    if (!user?.id) {
+      setTxError(language === 'my' ? 'User ID မရှိပါ' : 'User ID not found');
+      return;
+    }
+
+    const amount = asset === 'TON' 
+      ? depositAmount 
+      : depositUsdtAmount;
+
+    if (!amount || parseFloat(amount) <= 0) {
+      setTxError(language === 'my' ? 'ပမာဏ ထည့်သွင်းပါ' : 'Please enter amount');
+      return;
+    }
+
+    try {
+      setIsSendingTx(true);
+      setTxError(null);
+      setTxSuccess(false);
+      setSelectedAsset(asset);
+
+      console.log('[DEPOSIT] sending tx', { asset, amount, userId: user.id });
+
+      let transaction;
+      const memo = `deposit:${user.id}`;
+
+      if (asset === 'TON') {
+        // Create TON transfer with comment/memo
+        transaction = createTonTransferTransaction(TON_TREASURY_ADDRESS, amount, memo);
+      } else {
+        // Create USDT jetton transfer
+        transaction = createUsdtTransferTransaction(USDT_TREASURY_ADDRESS, amount);
+        // Note: USDT jetton transfers may need memo in payload - backend will handle verification
+      }
+
+      // Sign and send transaction
+      await signTransaction(transaction);
+
+      console.log('[DEPOSIT] tx sent');
+      setTxSuccess(true);
+      setTxError(null);
+      
+      // Clear amounts after successful send
+      setTimeout(() => {
+        setDepositAmount('');
+        setDepositUsdtAmount('');
+        setTxSuccess(false);
+        setSelectedAsset(null);
+      }, 5000);
+    } catch (error: any) {
+      console.error('[DEPOSIT] tx failed', error);
+      setTxError(error?.message || (language === 'my' ? 'Transaction ပို့ဆောင်မှု မအောင်မြင်ပါ' : 'Transaction failed'));
+      setTxSuccess(false);
+    } finally {
+      setIsSendingTx(false);
+    }
+  };
+
+  // Sync USDT amount when KYAT changes (deposit)
+  React.useEffect(() => {
+    if (depositAmount) {
+      const amount = parseFloat(depositAmount);
+      if (!isNaN(amount) && amount > 0) {
+        setDepositUsdtAmount((amount / 5000).toFixed(6));
+      } else {
+        setDepositUsdtAmount('');
+      }
+    } else {
+      setDepositUsdtAmount('');
+    }
+  }, [depositAmount]);
+
+  // Sync KYAT amount when USDT changes (deposit)
+  React.useEffect(() => {
+    if (depositUsdtAmount) {
+      const amount = parseFloat(depositUsdtAmount);
+      if (!isNaN(amount) && amount > 0) {
+        setDepositAmount((amount * 5000).toFixed(0));
+      } else {
+        setDepositAmount('');
+      }
+    } else {
+      setDepositAmount('');
+    }
+  }, [depositUsdtAmount]);
+
+  // Sync USDT amount when KYAT changes (withdraw)
+  React.useEffect(() => {
+    if (withdrawAmount) {
+      const amount = parseFloat(withdrawAmount);
+      if (!isNaN(amount) && amount > 0) {
+        setWithdrawUsdtAmount((amount / 5000).toFixed(6));
+      } else {
+        setWithdrawUsdtAmount('');
+      }
+    } else {
+      setWithdrawUsdtAmount('');
+    }
+  }, [withdrawAmount]);
+
+  // Sync KYAT amount when USDT changes (withdraw)
+  React.useEffect(() => {
+    if (withdrawUsdtAmount) {
+      const amount = parseFloat(withdrawUsdtAmount);
+      if (!isNaN(amount) && amount > 0) {
+        setWithdrawAmount((amount * 5000).toFixed(0));
+      } else {
+        setWithdrawAmount('');
+      }
+    } else {
+      setWithdrawAmount('');
+    }
+  }, [withdrawUsdtAmount]);
 
   if (!isOpen) return null;
 
@@ -143,52 +264,111 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
         case WalletTab.DEPOSIT:
             return (
                 <div className="space-y-3">
-                    {!user?.tonAddress && (
-                      <div className="p-3 rounded-xl bg-ios-yellow/10 border border-ios-yellow/20 mb-4">
-                        <p className="text-[12px] text-ios-yellow mb-2">
-                          {language === 'my' 
-                            ? 'ကျေးဇူးပြု၍ TON လိပ်စာကို မှတ်ပုံတင်ပါ' 
-                            : 'Please register your TON address first'}
-                        </p>
-                        <button
-                          onClick={() => setShowTonAddressModal(true)}
-                          className="w-full py-2 rounded-lg bg-ios-yellow/20 text-ios-yellow text-[12px] font-medium hover:bg-ios-yellow/30 transition-colors"
-                        >
-                          {language === 'my' ? 'မှတ်ပုံတင်ရန်' : 'Register Now'}
-                        </button>
-                      </div>
-                    )}
-                    {depositAddress && depositMemo && (
-                      <div className="p-4 rounded-xl bg-ios-gray5 border border-white/5 space-y-3">
+                    <div className="p-4 rounded-xl bg-ios-gray5 border border-white/5 space-y-3">
                         <div>
-                          <p className="text-[11px] text-ios-label-secondary mb-2 uppercase">{language === 'my' ? 'TON လိပ်စာ' : 'TON Address'}</p>
-                          <p className="text-[13px] font-mono text-white break-all mb-2">{depositAddress}</p>
-                          <button 
-                            onClick={handleCopyAddress}
-                            className="w-full py-2 rounded-xl bg-ios-blue text-white font-medium text-[13px] hover:bg-ios-blue/90 transition-colors"
-                          >
-                            {language === 'my' ? 'လိပ်စာ ကူးယူရန်' : 'Copy Address'}
-                          </button>
+                            <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
+                                {language === 'my' ? 'ပမာဏ (KYAT)' : 'Amount (KYAT)'}
+                            </label>
+                            <input
+                                type="number"
+                                value={depositAmount}
+                                onChange={(e) => setDepositAmount(e.target.value)}
+                                placeholder="1000"
+                                min="0"
+                                disabled={isSendingTx}
+                                className="w-full bg-ios-gray4 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-lg transition-all disabled:opacity-50"
+                            />
+                            {depositAmount && (
+                                <p className="text-[12px] text-ios-label-secondary mt-2">
+                                    = {depositUsdtAmount} USDT
+                                </p>
+                            )}
                         </div>
                         <div>
-                          <p className="text-[11px] text-ios-label-secondary mb-2 uppercase">{language === 'my' ? 'Memo (အတွင်းသွင်းရန်)' : 'Memo (Required)'}</p>
-                          <p className="text-[13px] font-mono text-white break-all mb-2">{depositMemo}</p>
-                          <button 
-                            onClick={handleCopyMemo}
-                            className="w-full py-2 rounded-xl bg-ios-gray4 text-white font-medium text-[13px] hover:bg-ios-gray3 transition-colors"
-                          >
-                            {language === 'my' ? 'Memo ကူးယူရန်' : 'Copy Memo'}
-                          </button>
+                            <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
+                                {language === 'my' ? 'ပမာဏ (USDT)' : 'Amount (USDT)'}
+                            </label>
+                            <input
+                                type="number"
+                                value={depositUsdtAmount}
+                                onChange={(e) => setDepositUsdtAmount(e.target.value)}
+                                placeholder="0.2"
+                                min="0"
+                                step="0.000001"
+                                disabled={isSendingTx}
+                                className="w-full bg-ios-gray4 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-lg transition-all disabled:opacity-50"
+                            />
+                            {depositUsdtAmount && (
+                                <p className="text-[12px] text-ios-label-secondary mt-2">
+                                    = {depositAmount} KYAT
+                                </p>
+                            )}
                         </div>
                         <div className="pt-2 border-t border-white/5">
-                          <p className="text-[10px] text-ios-label-secondary text-center">
-                            {language === 'my' 
-                              ? 'ကျေးဇူးပြု၍ TON USDT လွှဲပြောင်းရာတွင် memo ထည့်သွင်းပါ' 
-                              : 'Please include the memo when sending TON USDT'}
-                          </p>
+                            <p className="text-[10px] text-ios-label-secondary text-center">
+                                {language === 'my' 
+                                  ? 'ပမာဏ ထည့်သွင်းပြီး wallet ချိတ်ဆက်ပါ' 
+                                  : 'Enter amount and connect wallet'}
+                            </p>
                         </div>
-                      </div>
+                    </div>
+
+                    {/* Wallet Connection / Send Buttons */}
+                    {!isWalletConnected ? (
+                        <button 
+                            onClick={handleConnectWallet}
+                            disabled={walletLoading || isSendingTx}
+                            className="w-full py-3.5 bg-white text-black font-semibold rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {walletLoading ? TRANSLATIONS.loading[language] : (language === 'my' ? 'Wallet ချိတ်ဆက်ရန်' : 'Connect Wallet')}
+                        </button>
+                    ) : (
+                        <div className="space-y-2">
+                            {walletAddress && (
+                                <div className="p-2 rounded-lg bg-ios-gray4 text-[11px] text-ios-label-secondary text-center font-mono">
+                                    {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                                </div>
+                            )}
+                            {depositAmount && parseFloat(depositAmount) > 0 && (
+                                <button 
+                                    onClick={() => handleSendDeposit('TON')}
+                                    disabled={isSendingTx}
+                                    className="w-full py-3.5 bg-ios-blue text-white font-semibold rounded-xl hover:bg-ios-blue/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSendingTx && selectedAsset === 'TON' ? TRANSLATIONS.loading[language] : (language === 'my' ? 'TON ပို့ရန်' : 'Send TON')}
+                                </button>
+                            )}
+                            {depositUsdtAmount && parseFloat(depositUsdtAmount) > 0 && (
+                                <button 
+                                    onClick={() => handleSendDeposit('USDT')}
+                                    disabled={isSendingTx}
+                                    className="w-full py-3.5 bg-ios-green text-white font-semibold rounded-xl hover:bg-ios-green/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isSendingTx && selectedAsset === 'USDT' ? TRANSLATIONS.loading[language] : (language === 'my' ? 'USDT ပို့ရန်' : 'Send USDT')}
+                                </button>
+                            )}
+                        </div>
                     )}
+
+                    {/* Error Message */}
+                    {txError && (
+                        <div className="p-3 rounded-xl bg-ios-red/10 border border-ios-red/20">
+                            <p className="text-[13px] text-ios-red">{txError}</p>
+                        </div>
+                    )}
+
+                    {/* Success Message */}
+                    {txSuccess && (
+                        <div className="p-3 rounded-xl bg-ios-green/10 border border-ios-green/20">
+                            <p className="text-[13px] text-ios-green">
+                                {language === 'my' 
+                                  ? 'Transaction ပို့ပြီးပါပြီ။ Balance အတည်ပြုပြီးနောက် update ဖြစ်ပါမည်။' 
+                                  : 'Transaction sent. Balance will update after confirmation.'}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Contact Support Button */}
                     <button 
                       onClick={handleContactSupport}
                       className="w-full p-4 rounded-xl bg-ios-gray5 flex items-center justify-between group hover:bg-ios-gray4 transition-all"
@@ -196,103 +376,139 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                         <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
                         <Icons.User className="text-ios-blue" size={20} />
                     </button>
-                    {success && (
-                      <div className="p-3 rounded-xl bg-ios-green/10 border border-ios-green/20">
-                        <p className="text-[13px] text-ios-green">{success}</p>
-                      </div>
-                    )}
                 </div>
             )
         case WalletTab.WITHDRAW:
              return (
                 <div className="space-y-3">
-                    {withdrawMode === null ? (
-                      <>
-                        <div className="text-center py-4">
-                          <p className="text-ios-label-secondary text-sm mb-1">
+                    <div className="text-center py-4">
+                        <p className="text-ios-label-secondary text-sm mb-1">
                             {language === 'my' ? 'ငွေထုတ်ယူနိုင်သော ပမာဏ' : 'Available for withdrawal'}
-                          </p>
-                          <h3 className="text-3xl font-bold text-white tracking-tight mb-2">{balance.toLocaleString()} K</h3>
-                          {dailyWithdrawn > 0 && (
-                            <p className="text-[11px] text-ios-label-secondary mb-4">
-                              {language === 'my' 
-                                ? `ယနေ့ ထုတ်ယူပြီး: ${dailyWithdrawn.toLocaleString()} KYAT`
-                                : `Withdrawn today: ${dailyWithdrawn.toLocaleString()} KYAT`}
-                            </p>
-                          )}
-                        </div>
-                        <button 
-                          onClick={() => setWithdrawMode('request')}
-                          className="w-full p-4 rounded-xl bg-ios-gray5 flex items-center justify-between group hover:bg-ios-gray4 transition-all"
-                        >
-                          <span className="text-white font-medium text-[15px]">
-                            {language === 'my' ? 'ငွေထုတ်ယူမှု တောင်းဆိုရန်' : 'Request Withdrawal'}
-                          </span>
-                          <Icons.CreditCard className="text-ios-green" size={20} />
-                        </button>
-                        <button 
-                          onClick={handleContactSupport}
-                          className="w-full p-4 rounded-xl bg-ios-gray5 flex items-center justify-between group hover:bg-ios-gray4 transition-all"
-                        >
-                          <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
-                          <Icons.User className="text-ios-blue" size={20} />
-                        </button>
-                      </>
-                    ) : withdrawMode === 'request' ? (
-                      <>
-                        <button 
-                          onClick={() => setWithdrawMode(null)}
-                          className="mb-2 text-[13px] text-ios-blue hover:text-ios-blue/80 flex items-center gap-1 font-medium"
-                        >
-                          ← {language === 'my' ? 'ပြန်သွားရန်' : 'Back'}
-                        </button>
-                        {error && (
-                          <div className="p-3 rounded-xl bg-ios-red/10 border border-ios-red/20">
-                            <p className="text-[13px] text-ios-red">{error}</p>
-                          </div>
-                        )}
-                        {success && (
-                          <div className="p-3 rounded-xl bg-ios-green/10 border border-ios-green/20">
-                            <p className="text-[13px] text-ios-green">{success}</p>
-                          </div>
-                        )}
+                        </p>
+                        <h3 className="text-3xl font-bold text-white tracking-tight mb-2">{balance.toLocaleString()} K</h3>
+                    </div>
+                    <div className="p-4 rounded-xl bg-ios-gray5 border border-white/5 space-y-3">
                         {!user?.tonAddress && (
-                          <div>
-                            <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
-                              {language === 'my' ? 'TON လိပ်စာ' : 'TON Address'}
-                            </label>
-                            <input
-                              type="text"
-                              value={tonAddress}
-                              onChange={(e) => setTonAddress(e.target.value)}
-                              placeholder={language === 'my' ? 'TON လိပ်စာထည့်သွင်းပါ' : 'Enter TON address'}
-                              className="w-full bg-ios-gray5 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-sm transition-all"
-                            />
-                          </div>
+                            <div>
+                                <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
+                                    {language === 'my' ? 'TON လိပ်စာ' : 'TON Address'}
+                                </label>
+                                <input
+                                    type="text"
+                                    value={tonAddress}
+                                    onChange={(e) => setTonAddress(e.target.value)}
+                                    placeholder={language === 'my' ? 'TON လိပ်စာထည့်သွင်းပါ' : 'Enter TON address'}
+                                    disabled={isSendingWithdrawTx}
+                                    className="w-full bg-ios-gray4 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-sm transition-all disabled:opacity-50"
+                                />
+                            </div>
                         )}
                         <div>
-                          <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
-                            {language === 'my' ? 'ပမာဏ (KYAT)' : 'Amount (KYAT)'}
-                          </label>
-                          <input
-                            type="number"
-                            value={withdrawAmount}
-                            onChange={(e) => setWithdrawAmount(e.target.value)}
-                            min="5000"
-                            placeholder="5000"
-                            disabled={loading}
-                            className="w-full bg-ios-gray5 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-lg transition-all disabled:opacity-50"
-                          />
+                            <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
+                                {language === 'my' ? 'ပမာဏ (KYAT)' : 'Amount (KYAT)'}
+                            </label>
+                            <input
+                                type="number"
+                                value={withdrawAmount}
+                                onChange={(e) => setWithdrawAmount(e.target.value)}
+                                placeholder="10000"
+                                min="10000"
+                                max="5000000"
+                                disabled={isSendingWithdrawTx}
+                                className="w-full bg-ios-gray4 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-lg transition-all disabled:opacity-50"
+                            />
+                            {withdrawAmount && (
+                                <p className="text-[12px] text-ios-label-secondary mt-2">
+                                    = {withdrawUsdtAmount} USDT
+                                </p>
+                            )}
+                            <p className="text-[10px] text-ios-label-secondary mt-1">
+                                {language === 'my' 
+                                  ? 'အနည်းဆုံး 10,000 KYAT၊ အများဆုံး 5,000,000 KYAT' 
+                                  : 'Min: 10,000 KYAT, Max: 5,000,000 KYAT'}
+                            </p>
                         </div>
+                        <div>
+                            <label className="block text-[11px] text-ios-label-secondary mb-2 ml-1 uppercase tracking-wide">
+                                {language === 'my' ? 'ပမာဏ (USDT)' : 'Amount (USDT)'}
+                            </label>
+                            <input
+                                type="number"
+                                value={withdrawUsdtAmount}
+                                onChange={(e) => setWithdrawUsdtAmount(e.target.value)}
+                                placeholder="2.0"
+                                min="2"
+                                max="1000"
+                                step="0.000001"
+                                disabled={isSendingWithdrawTx}
+                                className="w-full bg-ios-gray4 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-lg transition-all disabled:opacity-50"
+                            />
+                            {withdrawUsdtAmount && (
+                                <p className="text-[12px] text-ios-label-secondary mt-2">
+                                    = {withdrawAmount} KYAT
+                                </p>
+                            )}
+                        </div>
+                        <div className="pt-2 border-t border-white/5">
+                            <p className="text-[10px] text-ios-label-secondary text-center">
+                                {language === 'my' 
+                                  ? 'Withdraw request ပို့ပြီးနောက် 1 နာရီအတွင်း process လုပ်ပါမည်' 
+                                  : 'Withdraw requests are processed within 1 hour'}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Wallet Connection / Request Withdraw Button */}
+                    {!isWalletConnected ? (
                         <button 
-                          onClick={handleWithdraw}
-                          disabled={loading || !withdrawAmount || parseFloat(withdrawAmount) < 5000}
-                          className="w-full py-3.5 bg-white text-black font-semibold rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={handleConnectWallet}
+                            disabled={walletLoading || isSendingWithdrawTx}
+                            className="w-full py-3.5 bg-white text-black font-semibold rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {loading ? TRANSLATIONS.loading[language] : (language === 'my' ? 'ငွေထုတ်ယူမှု တောင်းဆိုရန်' : 'Request Withdrawal')}
+                            {walletLoading ? TRANSLATIONS.loading[language] : (language === 'my' ? 'Wallet ချိတ်ဆက်ရန်' : 'Connect Wallet')}
                         </button>
-                      </>
-                    ) : null}
+                    ) : (
+                        <button 
+                            onClick={handleRequestWithdraw}
+                            disabled={
+                                isSendingWithdrawTx || 
+                                !withdrawAmount || 
+                                parseFloat(withdrawAmount) < 10000 || 
+                                parseFloat(withdrawAmount) > 5000000 ||
+                                (!user?.tonAddress && !tonAddress)
+                            }
+                            className="w-full py-3.5 bg-ios-red text-white font-semibold rounded-xl hover:bg-ios-red/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSendingWithdrawTx ? TRANSLATIONS.loading[language] : (language === 'my' ? 'Withdraw Request ပို့ရန်' : 'Request Withdraw')}
+                        </button>
+                    )}
+
+                    {/* Withdraw Error Message */}
+                    {withdrawTxError && (
+                        <div className="p-3 rounded-xl bg-ios-red/10 border border-ios-red/20">
+                            <p className="text-[13px] text-ios-red">{withdrawTxError}</p>
+                        </div>
+                    )}
+
+                    {/* Withdraw Success Message */}
+                    {withdrawTxSuccess && (
+                        <div className="p-3 rounded-xl bg-ios-green/10 border border-ios-green/20">
+                            <p className="text-[13px] text-ios-green">
+                                {language === 'my' 
+                                  ? 'Withdraw request ပို့ပြီးပါပြီ။ 1 နာရီအတွင်း process လုပ်ပါမည်။' 
+                                  : 'Withdraw request submitted. Funds will be processed within 1 hour.'}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Contact Support Button */}
+                    <button 
+                      onClick={handleContactSupport}
+                      className="w-full p-4 rounded-xl bg-ios-gray5 flex items-center justify-between group hover:bg-ios-gray4 transition-all"
+                    >
+                        <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
+                        <Icons.User className="text-ios-blue" size={20} />
+                    </button>
                 </div>
             )
         default:
@@ -347,17 +563,6 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
 
         </GlassCard>
       </div>
-
-      <TonAddressModal
-        language={language}
-        isOpen={showTonAddressModal}
-        onClose={() => setShowTonAddressModal(false)}
-        onSuccess={async () => {
-          await onRefresh();
-          await fetchDepositAddress();
-        }}
-      />
     </div>
   );
 };
-

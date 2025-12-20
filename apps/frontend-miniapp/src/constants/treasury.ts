@@ -1,0 +1,4 @@
+// Treasury wallet addresses for deposits
+export const TON_TREASURY_ADDRESS = 'UQD5OzR2XJRSTDBEnK4W8OD8Ed04jVkHOPI5wdwOkZTB4Y38';
+export const USDT_TREASURY_ADDRESS = 'UQD5OzR2XJRSTDBEnK4W8OD8Ed04jVkHOPI5wdwOkZTB4Y38';
+
