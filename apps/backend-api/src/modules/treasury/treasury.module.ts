@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TreasuryTransaction } from './entities/treasury-transaction.entity';
@@ -13,6 +13,7 @@ import { DailySummaryJob } from './daily-summary.job';
 import { TreasuryController } from './treasury.controller';
 import { TonModule } from '../../ton/ton.module';
 import { UsersModule } from '../users/users.module';
+import { AuthModule } from '../auth/auth.module';
 import { User } from '../users/entities/user.entity';
 
 @Module({
@@ -27,6 +28,7 @@ import { User } from '../users/entities/user.entity';
     ScheduleModule,
     TonModule,
     UsersModule,
+    forwardRef(() => AuthModule), // Import AuthModule to access JwtModule and JwtAuthGuard
   ],
   providers: [
     TreasuryService,
