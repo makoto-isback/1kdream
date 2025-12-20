@@ -11,6 +11,10 @@ import { UsdtWithdrawal } from '../modules/wallet/usdt-withdrawals/entities/usdt
 import { AutoBetPlan } from '../modules/autobet/entities/autobet-plan.entity';
 import { PointsRedemption } from '../modules/points/entities/points-redemption.entity';
 import { SystemSettings } from '../modules/system/entities/system-settings.entity';
+import { TreasuryTransaction } from '../modules/treasury/entities/treasury-transaction.entity';
+import { UserDeposit } from '../modules/treasury/entities/user-deposit.entity';
+import { WithdrawRequest } from '../modules/treasury/entities/withdraw-request.entity';
+import { WithdrawLimitDaily } from '../modules/treasury/entities/withdraw-limit-daily.entity';
 import { DatabaseHealthService } from './database-health.service';
 
 @Module({
@@ -36,6 +40,10 @@ import { DatabaseHealthService } from './database-health.service';
           AutoBetPlan,
           PointsRedemption,
           SystemSettings,
+          TreasuryTransaction,
+          UserDeposit,
+          WithdrawRequest,
+          WithdrawLimitDaily,
         ],
         // Synchronize: Only enable in development OR when explicitly enabled via DATABASE_SYNC=true
         // WARNING: DATABASE_SYNC=true should only be used for initial schema creation in production

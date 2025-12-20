@@ -15,6 +15,7 @@ import { TonModule } from './ton/ton.module';
 import { AutoBetModule } from './modules/autobet/autobet.module';
 import { PointsModule } from './modules/points/points.module';
 import { SystemModule } from './modules/system/system.module';
+import { TreasuryModule } from './modules/treasury/treasury.module';
 import { HourlyDrawJob } from './jobs/hourly-draw.job';
 import { AutoBetExecutionJob } from './jobs/autobet-execution.job';
 import { StartupInitJob } from './jobs/startup-init.job';
@@ -39,6 +40,7 @@ import { EventsModule } from './gateways/events.module';
     AutoBetModule,
     PointsModule,
     SystemModule,
+    TreasuryModule,
     EventsModule,
   ],
   controllers: [AppController],
