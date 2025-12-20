@@ -98,22 +98,33 @@ class TonConnectService {
           hasWallet: !!wallet,
           hasAddress: !!wallet?.account?.address,
           address: wallet?.account?.address,
+          connectorConnected: this.connector?.connected,
         });
         
-        // Sync connection state when TonConnectUI detects connection
-        // This ensures UI updates when user returns from wallet approval
+        // CRITICAL: Only accept connection if SDK connector is ALSO connected
+        // TonConnectUI might show address from storage, but SDK might not be connected
+        // We must verify BOTH are connected before trusting the connection
         if (wallet?.account?.address) {
-          const walletInfo: WalletInfo = {
-            address: wallet.account.address,
-            walletType: (wallet as any).device?.appName || (wallet as any).provider?.name || 'unknown',
-            connected: true,
-          };
-          this.walletInfo = walletInfo;
-          this.saveWalletToStorage(walletInfo);
-          
-          console.log('[TON Connect UI] ✅ Connection synced:', wallet.account.address);
-          // Notify all callbacks to update UI
-          this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
+          // Verify SDK connector is actually connected
+          if (this.connector && this.connector.connected) {
+            const walletInfo: WalletInfo = {
+              address: wallet.account.address,
+              walletType: (wallet as any).device?.appName || (wallet as any).provider?.name || 'unknown',
+              connected: true,
+            };
+            this.walletInfo = walletInfo;
+            this.saveWalletToStorage(walletInfo);
+            
+            console.log('[TON Connect UI] ✅ Connection synced (SDK confirmed):', wallet.account.address);
+            // Notify all callbacks to update UI
+            this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
+          } else {
+            // TonConnectUI shows address but SDK is not connected - reject it
+            console.warn('[TON Connect UI] ⚠️ TonConnectUI shows address but SDK connector not connected - rejecting');
+            this.walletInfo = null;
+            this.saveWalletToStorage(null);
+            this.statusChangeCallbacks.forEach(cb => cb(null));
+          }
         } else {
           // Disconnected
           this.walletInfo = null;
@@ -290,39 +301,53 @@ class TonConnectService {
     }
 
     try {
-      // CRITICAL: Check if already connected BEFORE calling openModal()
-      // Both TonConnectUI and TonConnectSDK share the same storage
-      // If walletInfo exists, both are likely connected
-      // TonConnectUI.openModal() will throw an error if already connected
-      if (this.walletInfo?.address) {
-        console.log('[TON Connect] Wallet already connected, disconnecting first to allow reconnection');
-        // Disconnect SDK first (this also clears shared storage)
-        if (this.connector.connected) {
-          await this.connector.disconnect();
-        }
-        // Clear our stored wallet info
-        this.walletInfo = null;
-        this.saveWalletToStorage(null);
-        // Notify callbacks that we disconnected
-        this.statusChangeCallbacks.forEach(cb => cb(null));
-        // Small delay to ensure disconnect completes
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // Also check connector.connected as a fallback
+      // CRITICAL: Only trust SDK connector.connected - don't trust walletInfo or TonConnectUI
+      // If SDK connector is actually connected, we're done
       if (this.connector.connected) {
-        // Verify existing connection has session proof (not support-assisted)
-        // Note: connector.wallet might not be directly accessible, so we check our stored info
+        console.log('[TON Connect] SDK connector is already connected');
+        // Verify we have walletInfo (should be set by onStatusChange)
         if (this.walletInfo?.address) {
-          // If we have stored wallet info, it means onStatusChange already validated it
           console.log('[TON Connect] Already connected with valid session');
           return;
         } else {
-          // Connected but no stored info = support-assisted mode
-          console.warn('[TON Connect] Existing connection is support-assisted - reconnecting');
-          await this.connector.disconnect();
+          // Connector is connected but no walletInfo - sync state
+          console.warn('[TON Connect] Connector connected but no walletInfo - syncing');
+          // onStatusChange should fire and set walletInfo, but if it doesn't, we'll wait
+          await new Promise(resolve => setTimeout(resolve, 500));
+          if (this.walletInfo?.address) {
+            return;
+          }
         }
       }
+
+      // If we reach here, SDK connector is NOT connected
+      // But TonConnectUI might think it's connected (from stale storage)
+      // We need to clear any stale state before calling openModal()
+      
+      // Clear walletInfo if it exists (it's stale if connector is not connected)
+      if (this.walletInfo?.address) {
+        console.log('[TON Connect] Clearing stale walletInfo - SDK connector is not connected');
+        this.walletInfo = null;
+        this.saveWalletToStorage(null);
+        this.statusChangeCallbacks.forEach(cb => cb(null));
+      }
+
+      // Clear shared storage to ensure TonConnectUI also sees disconnected state
+      // This prevents TonConnectUI from thinking it's connected when SDK is not
+      try {
+        // Clear TON Connect storage (shared by both SDK and UI)
+        if (typeof window !== 'undefined' && window.localStorage) {
+          // TON Connect SDK uses this key for storage
+          const tonConnectStorageKey = 'ton-connect-storage';
+          localStorage.removeItem(tonConnectStorageKey);
+          console.log('[TON Connect] Cleared TON Connect shared storage');
+        }
+      } catch (e) {
+        console.warn('[TON Connect] Failed to clear shared storage:', e);
+      }
+
+      // Wait for storage clear to propagate
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // CRITICAL: Get available wallets and connect safely
       // NEVER assume injected wallet exists - SDK will handle environment detection
@@ -379,6 +404,35 @@ class TonConnectService {
     } catch (error: any) {
       // Provide user-friendly error messages
       const errorMessage = error?.message || 'Failed to connect wallet';
+      
+      // Check for "already connected" error from TonConnectUI
+      if (errorMessage.includes('already connected')) {
+        console.warn('[TON Connect] TonConnectUI thinks it\'s connected but SDK is not - clearing state');
+        // Clear everything and try again
+        try {
+          if (this.connector?.connected) {
+            await this.connector.disconnect();
+          }
+          this.walletInfo = null;
+          this.saveWalletToStorage(null);
+          // Clear shared storage
+          if (typeof window !== 'undefined' && window.localStorage) {
+            const tonConnectStorageKey = 'ton-connect-storage';
+            localStorage.removeItem(tonConnectStorageKey);
+          }
+          this.statusChangeCallbacks.forEach(cb => cb(null));
+          // Wait and retry
+          await new Promise(resolve => setTimeout(resolve, 500));
+          // Retry opening modal
+          if (this.tonConnectUI) {
+            await this.tonConnectUI.openModal();
+          }
+        } catch (retryError) {
+          console.error('[TON Connect] Retry failed:', retryError);
+          throw new Error('Please refresh the page and try again');
+        }
+        return;
+      }
       
       // Check for injected wallet error and provide helpful message
       if (errorMessage.includes('injected wallet') || errorMessage.includes('jsBridgeKey')) {
