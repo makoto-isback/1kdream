@@ -73,8 +73,13 @@ class TonConnectService {
         iconUrl: `${window.location.origin}/icon.png`,
       };
 
+      // Initialize TON Connect SDK with manifest
+      // CRITICAL: Do NOT configure injected wallet - let SDK auto-detect
+      // This ensures compatibility across Telegram Mini App, mobile, and desktop
       this.connector = new TonConnectSDK({
         manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
+        // Do NOT set jsBridgeKey or injected wallet options
+        // SDK will automatically detect environment and show appropriate modal
       });
 
       // Listen for connection events - this is the ONLY place we read account.address
@@ -166,6 +171,9 @@ class TonConnectService {
   /**
    * Connect to wallet - this is the ONLY place initialization should happen.
    * Called explicitly by user action (button click), never on mount.
+   * 
+   * INVARIANT: Uses universal modal flow - NEVER assumes injected wallet exists.
+   * Works in Telegram Mini App, mobile browser, and desktop browser.
    */
   async connect(): Promise<void> {
     // Initialize only when user explicitly clicks connect
@@ -183,29 +191,60 @@ class TonConnectService {
         return;
       }
 
-      // Get available wallets
+      // CRITICAL: Get available wallets and connect safely
+      // NEVER assume injected wallet exists - SDK will handle environment detection
       const walletsList = await this.connector.getWallets();
       
       if (walletsList.length === 0) {
-        throw new Error('No TON wallets available');
+        throw new Error('No TON wallets available. Please install a TON wallet app.');
       }
 
-      // For Telegram Mini App, prefer Telegram Wallet
-      const telegramWallet = walletsList.find(w => 
-        w.name.toLowerCase().includes('telegram') || 
-        w.name.toLowerCase().includes('tonkeeper')
-      );
-      const walletToConnect = telegramWallet || walletsList[0];
+      // Filter out wallets that require injection (if we can detect them)
+      // Prefer universal link wallets that work across all environments
+      const universalWallets = walletsList.filter(w => {
+        // Prefer wallets with universalLink (works everywhere)
+        // Avoid wallets that only work with injection
+        return w.universalLink || w.bridgeUrl;
+      });
 
-      // Connect to wallet
-      // Note: This will open the wallet app for connection
-      // After connection, onStatusChange will fire with wallet info
+      // Use universal wallets if available, otherwise fall back to all wallets
+      const availableWallets = universalWallets.length > 0 ? universalWallets : walletsList;
+
+      // In Telegram Mini App, prefer Telegram Wallet
+      // Otherwise, use first available universal wallet
+      const telegramWallet = availableWallets.find(w => 
+        w.name.toLowerCase().includes('telegram')
+      );
+      
+      const walletToConnect = telegramWallet || availableWallets[0];
+
+      if (!walletToConnect) {
+        throw new Error('No compatible TON wallet found. Please install a TON wallet app.');
+      }
+
+      console.log('[TON Connect] Connecting to wallet:', walletToConnect.name);
+      
+      // CRITICAL: Use connect() with wallet object - SDK will show modal automatically
+      // This works in:
+      // - Telegram Mini App → Opens Telegram Wallet
+      // - Mobile browser → Deep link to wallet app
+      // - Desktop browser → Shows wallet selection modal
+      // SDK automatically handles injected wallet detection - we don't need to check
       await this.connector.connect(walletToConnect);
-      console.log('[TON Connect] connect() triggered');
+      console.log('[TON Connect] Connection initiated - waiting for user confirmation');
       // ❗ DO NOT read wallet/account here - onStatusChange will handle it
-    } catch (error) {
+    } catch (error: any) {
+      // Provide user-friendly error messages
+      const errorMessage = error?.message || 'Failed to connect wallet';
+      
+      // Check for injected wallet error and provide helpful message
+      if (errorMessage.includes('injected wallet') || errorMessage.includes('jsBridgeKey')) {
+        console.error('[TON Connect] Injected wallet error:', error);
+        throw new Error('Please use the wallet selector to choose your wallet. Injected wallets are not supported in this environment.');
+      }
+      
       console.error('[TON Connect] Connection error:', error);
-      throw error;
+      throw new Error(errorMessage);
     }
   }
 
