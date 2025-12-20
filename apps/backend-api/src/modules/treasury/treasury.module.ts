@@ -13,6 +13,7 @@ import { DailySummaryJob } from './daily-summary.job';
 import { TreasuryController } from './treasury.controller';
 import { TonModule } from '../../ton/ton.module';
 import { UsersModule } from '../users/users.module';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { UsersModule } from '../users/users.module';
       UserDeposit,
       WithdrawRequest,
       WithdrawLimitDaily,
+      User, // Required for TreasuryService to inject UserRepository
     ]),
     ScheduleModule,
     TonModule,
