@@ -1,4 +1,5 @@
 import TonConnectSDK from '@tonconnect/sdk';
+import { TonConnectUI } from '@tonconnect/ui';
 
 export interface WalletInfo {
   address: string;
@@ -10,6 +11,7 @@ type StatusChangeCallback = (wallet: { address: string } | null) => void;
 
 class TonConnectService {
   private connector: TonConnectSDK | null = null;
+  private tonConnectUI: TonConnectUI | null = null;
   private walletInfo: WalletInfo | null = null;
   private readonly STORAGE_KEY = 'ton_wallet_info';
   private initialized: boolean = false;
@@ -66,18 +68,23 @@ class TonConnectService {
     }
 
     try {
-      // Create manifest for TON Connect
-      const manifest = {
-        url: window.location.origin,
-        name: '1K Dream',
-        iconUrl: `${window.location.origin}/icon.png`,
-      };
+      const manifestUrl = `${window.location.origin}/tonconnect-manifest.json`;
+      const isTelegramMiniApp = typeof window !== 'undefined' && !!(window as any).Telegram?.WebApp;
 
-      // Initialize TON Connect SDK with manifest
+      // Initialize TON Connect UI for wallet connection UI
+      // This handles the modal and connection URL generation automatically
+      // TonConnectUI will auto-detect Telegram Mini App and handle return URL
+      this.tonConnectUI = new TonConnectUI({
+        manifestUrl,
+        // uiOptions can be configured if needed, but TonConnectUI auto-detects Telegram Mini App
+        // and handles the return URL automatically
+      });
+
+      // Initialize TON Connect SDK with manifest (for transaction signing and operations)
       // CRITICAL: Do NOT configure injected wallet - let SDK auto-detect
       // This ensures compatibility across Telegram Mini App, mobile, and desktop
       this.connector = new TonConnectSDK({
-        manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
+        manifestUrl,
         // Do NOT set jsBridgeKey or injected wallet options
         // SDK will automatically detect environment and show appropriate modal
       });
@@ -287,84 +294,26 @@ class TonConnectService {
       // Use universal wallets if available, otherwise fall back to all wallets
       const availableWallets = universalWallets.length > 0 ? universalWallets : walletsList;
 
-      // CRITICAL: In Telegram Mini App, let SDK show wallet selection modal
-      // Check if we're in Telegram Mini App environment
-      const isTelegramMiniApp = typeof window !== 'undefined' && !!(window as any).Telegram?.WebApp;
-      
-      // CRITICAL: Let TON Connect SDK handle the UI flow
-      // The SDK will automatically show:
-      // 1. Wallet selection modal with "Connect Wallet in Telegram" button (first screenshot)
-      // 2. Connection approval dialog (second screenshot) when user selects wallet
-      // DO NOT manually open links - SDK handles this internally
-      
-      if (isTelegramMiniApp) {
-        // In Telegram Mini App, find Telegram Wallet and connect
-        // Then manually open the wallet UI using universalLink
-        const telegramWallet = availableWallets.find(w => {
-          const name = (w.name || '').toLowerCase();
-          const appName = ((w as any).appName || '').toLowerCase();
-          return name.includes('telegram') || 
-                 name === 'wallet' ||
-                 appName.includes('telegram');
-        });
-        
-        if (!telegramWallet) {
-          throw new Error('Telegram Wallet not found. Please ensure Telegram Wallet is available.');
-        }
-        
-        if (!telegramWallet.universalLink) {
-          throw new Error('Telegram Wallet universalLink not available.');
-        }
-        
-        console.log('[TON Connect] 🔄 Telegram Mini App - Connecting to Telegram Wallet:', telegramWallet.name);
-        
-        // Step 1: Call connect() to prepare the connection request
-        // This sets up the SDK's connection state and generates the connection request
-        await this.connector.connect(telegramWallet);
-        console.log('[TON Connect] ✅ Connection request prepared');
-        
-        // Step 2: Manually open the wallet UI using universalLink
-        // In Telegram Mini App, SDK doesn't automatically open the UI
-        // We need to use Telegram.WebApp.openLink() to open the wallet
-        const tg = (window as any).Telegram?.WebApp;
-        if (tg && typeof tg.openLink === 'function') {
-          console.log('[TON Connect] 🔄 Opening Telegram Wallet UI via universalLink');
-          console.log('[TON Connect] Universal link:', telegramWallet.universalLink);
-          
-          // Open the wallet's universalLink - this will show the connection approval dialog
-          tg.openLink(telegramWallet.universalLink, { try_instant_view: false });
-          console.log('[TON Connect] ✅ Wallet UI opened - user will see approval dialog');
-          console.log('[TON Connect] Waiting for user approval - onStatusChange will fire when user returns');
-        } else {
-          throw new Error('Telegram.WebApp.openLink is not available');
-        }
-      } else {
-        // In browser, show wallet selection modal
-        // Prefer Telegram Wallet if available, otherwise show modal
-        const telegramWallet = availableWallets.find(w => 
-          w.name.toLowerCase().includes('telegram')
-        );
-        
-        if (telegramWallet) {
-          console.log('[TON Connect] 🔄 Browser - Connecting to Telegram Wallet:', telegramWallet.name);
-          await this.connector.connect(telegramWallet);
-        } else {
-          console.log('[TON Connect] 🔄 Browser - Showing wallet selection modal');
-          // In browser, try to show modal - if it fails with injected wallet error, connect to first available
-          try {
-            await this.connector.connect();
-          } catch (error: any) {
-            const errorMsg = error?.message || '';
-            if (errorMsg.includes('jsBridgeKey') || errorMsg.includes('injected')) {
-              console.warn('[TON Connect] ⚠️ Injected wallet error, connecting to first available wallet');
-              await this.connector.connect(availableWallets[0]);
-            } else {
-              throw error;
-            }
-          }
-        }
-        console.log('[TON Connect] ✅ Connection request initiated - SDK should show UI');
+      // CRITICAL: Use TonConnectUI to handle wallet connection UI
+      // This automatically generates the correct connection URL and opens the wallet UI
+      // Works in both Telegram Mini App and browser environments
+      if (!this.tonConnectUI) {
+        throw new Error('TON Connect UI not initialized');
       }
+
+      console.log('[TON Connect] 🔄 Opening wallet connection modal via TonConnectUI');
+      
+      // Use TonConnectUI.openModal() to show wallet selection modal
+      // This will:
+      // 1. Show wallet selection modal (with "Connect Wallet in Telegram" button)
+      // 2. Generate proper TON Connect connection URL with request parameters
+      // 3. Open the wallet UI automatically (handles Telegram.WebApp.openLink internally)
+      // 4. Handle return strategy for Telegram Mini App
+      await this.tonConnectUI.openModal();
+      
+      console.log('[TON Connect] ✅ Wallet connection modal opened');
+      console.log('[TON Connect] User will see wallet selection and approval dialog');
+      console.log('[TON Connect] Waiting for user approval - onStatusChange will fire when connection completes');
       
       // ❗ DO NOT read wallet/account here - onStatusChange will handle it
       // onStatusChange will verify session proof before accepting connection
