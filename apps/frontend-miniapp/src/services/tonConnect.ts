@@ -15,7 +15,17 @@ class TonConnectService {
   private initialized: boolean = false;
   private statusChangeCallbacks: StatusChangeCallback[] = [];
 
-  // Lazy initialization - only when window and Telegram WebApp are available
+  /**
+   * Lazy initialization - ONLY called when user explicitly clicks connect().
+   * INVARIANT: This is NEVER called on mount - button renders immediately.
+   * 
+   * This method:
+   * - Waits for Telegram.WebApp.ready()
+   * - Creates TonConnectSDK (may hang if manifest fails)
+   * - Loads wallet from storage
+   * 
+   * All of this happens on user action, not automatically.
+   */
   private ensureInitialized(): void {
     if (this.initialized || typeof window === 'undefined') {
       return;
@@ -29,10 +39,22 @@ class TonConnectService {
       return;
     }
 
+    // CRITICAL: Wait for Telegram.WebApp.ready() before initializing
+    // This prevents infinite loading in Telegram Mini App
+    if (typeof tg.ready === 'function') {
+      try {
+        tg.ready();
+        console.log('[TON Connect] ✅ Telegram.WebApp.ready() called before initialization');
+      } catch (error) {
+        console.warn('[TON Connect] Telegram.WebApp.ready() failed, continuing anyway:', error);
+      }
+    }
+
     try {
       this.initializeConnector();
       this.loadWalletFromStorage();
       this.initialized = true;
+      console.log('[TON Connect] ✅ Initialized successfully');
     } catch (error) {
       console.error('[TON Connect] Failed to initialize:', error);
     }
@@ -53,8 +75,6 @@ class TonConnectService {
 
       this.connector = new TonConnectSDK({
         manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
-        // Fallback to inline manifest if URL fails
-        manifest: manifest as any,
       });
 
       // Listen for connection events - this is the ONLY place we read account.address
@@ -62,7 +82,7 @@ class TonConnectService {
         if (wallet?.account?.address) {
           const walletInfo: WalletInfo = {
             address: wallet.account.address,
-            walletType: wallet.account.walletAppName || 'unknown',
+            walletType: (wallet as any).device?.appName || (wallet as any).provider?.name || 'unknown',
             connected: true,
           };
           this.walletInfo = walletInfo;
@@ -83,6 +103,10 @@ class TonConnectService {
     }
   }
 
+  /**
+   * Load wallet info from localStorage (sync, no async calls).
+   * This is safe to call on mount - it only reads from storage.
+   */
   private loadWalletFromStorage() {
     if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
       return;
@@ -93,7 +117,7 @@ class TonConnectService {
       if (stored) {
         const parsed = JSON.parse(stored);
         this.walletInfo = parsed;
-        // Notify callbacks if we have stored wallet info
+        // Notify callbacks if we have stored wallet info (sync, no initialization)
         if (parsed?.address) {
           this.statusChangeCallbacks.forEach(cb => cb({ address: parsed.address }));
         }
@@ -119,11 +143,16 @@ class TonConnectService {
     }
   }
 
-  // Register callback for status changes
+  /**
+   * Register callback for status changes.
+   * INVARIANT: This does NOT trigger initialization - it only registers a listener.
+   * Initialization happens lazily when user clicks connect().
+   */
   onStatusChange(callback: StatusChangeCallback): () => void {
     this.statusChangeCallbacks.push(callback);
     
-    // Immediately call with current state if available
+    // Immediately call with current state if available (from storage, no initialization)
+    // This is safe - it only reads cached walletInfo, doesn't trigger ensureInitialized()
     if (this.walletInfo?.address) {
       callback({ address: this.walletInfo.address });
     }
@@ -134,7 +163,12 @@ class TonConnectService {
     };
   }
 
+  /**
+   * Connect to wallet - this is the ONLY place initialization should happen.
+   * Called explicitly by user action (button click), never on mount.
+   */
   async connect(): Promise<void> {
+    // Initialize only when user explicitly clicks connect
     this.ensureInitialized();
 
     if (!this.connector) {
@@ -166,12 +200,7 @@ class TonConnectService {
       // Connect to wallet
       // Note: This will open the wallet app for connection
       // After connection, onStatusChange will fire with wallet info
-      const connectionSource = {
-        universalLink: walletToConnect.universalLink,
-        bridgeUrl: walletToConnect.bridgeUrl,
-      };
-
-      await this.connector.connect(connectionSource);
+      await this.connector.connect(walletToConnect);
       console.log('[TON Connect] connect() triggered');
       // ❗ DO NOT read wallet/account here - onStatusChange will handle it
     } catch (error) {
@@ -196,23 +225,31 @@ class TonConnectService {
     }
   }
 
+  /**
+   * Get stored wallet info without triggering initialization.
+   * This is safe to call on mount - it only returns cached data.
+   * Initialization happens lazily when user clicks connect.
+   */
   getWalletInfo(): WalletInfo | null {
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    this.ensureInitialized();
+    // Return cached wallet info without initializing
+    // This prevents blocking UI on mount
     return this.walletInfo;
   }
 
+  /**
+   * Check connection status without triggering initialization.
+   * Returns false if not initialized - initialization happens on connect().
+   */
   isConnected(): boolean {
     if (typeof window === 'undefined') {
       return false;
     }
-    this.ensureInitialized();
-    return this.connector?.connected || false;
+    // Don't initialize here - only check if already initialized
+    return this.initialized && (this.connector?.connected || false);
   }
 
   async sendTransaction(transaction: any): Promise<string> {
+    // Initialize only when actually needed (user action)
     this.ensureInitialized();
 
     if (!this.connector || !this.connector.connected) {
