@@ -29,23 +29,29 @@ export class WithdrawExecutorWorker implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const withdrawExecutorEnabled = this.configService.get('WITHDRAW_EXECUTOR_ENABLED') === 'true';
+    // Strict flag check: only enable if env value is exactly the string "true"
+    const flagValue = this.configService.get('WITHDRAW_EXECUTOR_ENABLED');
+    const withdrawExecutorEnabled = flagValue === 'true';
     const isDev = this.configService.get('NODE_ENV') === 'development';
 
+    // Log current flag state for debugging
+    this.logger.log(`[WITHDRAW EXECUTOR] Flag value: "${flagValue}" (type: ${typeof flagValue})`);
+
     if (isDev && !withdrawExecutorEnabled) {
-      this.logger.warn('[WITHDRAW EXECUTOR] Disabled in development mode');
+      this.logger.warn('[WITHDRAW EXECUTOR] ❌ DISABLED - Development mode and flag not set to "true"');
       this.isEnabled = false;
       return;
     }
 
     if (!withdrawExecutorEnabled) {
-      this.logger.warn('[WITHDRAW EXECUTOR] Disabled (WITHDRAW_EXECUTOR_ENABLED !== true)');
+      this.logger.warn('[WITHDRAW EXECUTOR] ❌ DISABLED - WITHDRAW_EXECUTOR_ENABLED must be exactly "true"');
+      this.logger.warn('[WITHDRAW EXECUTOR] Current value:', flagValue === undefined ? 'undefined' : `"${flagValue}"`);
       this.isEnabled = false;
       return;
     }
 
     this.isEnabled = true;
-    this.logger.log('[WITHDRAW EXECUTOR] Worker initialized and enabled');
+    this.logger.log('[WITHDRAW EXECUTOR] ✅ ENABLED - Worker initialized and running');
   }
 
   /**

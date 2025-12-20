@@ -6,6 +6,7 @@ import { WalletProvider } from './contexts/WalletContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LotteryPage from './pages/LotteryPage';
 import Deposit from './pages/Deposit';
+import Withdraw from './pages/Withdraw';
 import './styles/index.css';
 
 function AppContent() {
@@ -35,6 +36,7 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<LotteryPage />} />
           <Route path="/deposit" element={<Deposit />} />
+          <Route path="/withdraw" element={<Withdraw />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>

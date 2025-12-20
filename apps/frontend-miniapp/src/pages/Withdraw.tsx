@@ -5,7 +5,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { useWallet } from '../contexts/WalletContext';
 import { useClientReady } from '../hooks/useClientReady';
 import { kyatToUsdt } from '../hooks/useUsdtWallet';
-import './Withdraw.css';
+import '../styles/Withdraw.css';
 
 // Contact Support helper
 const handleContactSupport = () => {
@@ -20,6 +20,7 @@ const handleContactSupport = () => {
 };
 
 export default function Withdraw() {
+  console.log('🔥 RENDERING FILE: apps/frontend-miniapp/src/pages/Withdraw.tsx');
   const navigate = useNavigate();
   const { user, isAuthReady } = useAuth();
   const { t } = useTranslation();
@@ -147,7 +148,24 @@ export default function Withdraw() {
   // CRITICAL: Once auth is ready and user exists, ALWAYS render wallet UI
   return (
     <div className="withdraw">
-      <div className="container">
+      {/* LOCAL DEBUG MARKER - ALWAYS VISIBLE */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 9999,
+        background: 'red',
+        color: 'white',
+        padding: '6px 10px',
+        fontWeight: 'bold',
+        fontSize: '14px',
+        width: '100%',
+        textAlign: 'center',
+        boxSizing: 'border-box'
+      }}>
+        LOCAL UI TEST – WALLET UI v2
+      </div>
+      <div className="container" style={{ marginTop: '40px' }}>
         <div className="header">
           <button className="back-btn" onClick={() => navigate('/')}>←</button>
           <h1>{t('withdraw.title')}</h1>

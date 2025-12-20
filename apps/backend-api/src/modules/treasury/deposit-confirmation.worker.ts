@@ -22,23 +22,29 @@ export class DepositConfirmationWorker implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const depositConfirmationEnabled = this.configService.get('DEPOSIT_CONFIRMATION_ENABLED') === 'true';
+    // Strict flag check: only enable if env value is exactly the string "true"
+    const flagValue = this.configService.get('DEPOSIT_CONFIRMATION_ENABLED');
+    const depositConfirmationEnabled = flagValue === 'true';
     const isDev = this.configService.get('NODE_ENV') === 'development';
 
+    // Log current flag state for debugging
+    this.logger.log(`[DEPOSIT CONFIRMATION] Flag value: "${flagValue}" (type: ${typeof flagValue})`);
+
     if (isDev && !depositConfirmationEnabled) {
-      this.logger.warn('[DEPOSIT CONFIRMATION] Disabled in development mode');
+      this.logger.warn('[DEPOSIT CONFIRMATION] ❌ DISABLED - Development mode and flag not set to "true"');
       this.isEnabled = false;
       return;
     }
 
     if (!depositConfirmationEnabled) {
-      this.logger.warn('[DEPOSIT CONFIRMATION] Disabled (DEPOSIT_CONFIRMATION_ENABLED !== true)');
+      this.logger.warn('[DEPOSIT CONFIRMATION] ❌ DISABLED - DEPOSIT_CONFIRMATION_ENABLED must be exactly "true"');
+      this.logger.warn('[DEPOSIT CONFIRMATION] Current value:', flagValue === undefined ? 'undefined' : `"${flagValue}"`);
       this.isEnabled = false;
       return;
     }
 
     this.isEnabled = true;
-    this.logger.log('[DEPOSIT CONFIRMATION] Worker initialized and enabled');
+    this.logger.log('[DEPOSIT CONFIRMATION] ✅ ENABLED - Worker initialized and running');
   }
 
   /**

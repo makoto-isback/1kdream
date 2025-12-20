@@ -21,6 +21,8 @@ const handleContactSupport = () => {
 };
 
 export default function Deposit() {
+  console.log('🔥 RENDERING FILE: apps/frontend-miniapp/src/pages/Deposit.tsx');
+  console.log('[WALLET PAGE] Deposit page rendered');
   const navigate = useNavigate();
   const { user, isAuthReady } = useAuth();
   const { t } = useTranslation();
@@ -152,7 +154,24 @@ export default function Deposit() {
   return (
     <ErrorBoundary>
       <div className="deposit">
-        <div className="container">
+        {/* LOCAL DEBUG MARKER - ALWAYS VISIBLE */}
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          zIndex: 9999,
+          background: 'red',
+          color: 'white',
+          padding: '6px 10px',
+          fontWeight: 'bold',
+          fontSize: '14px',
+          width: '100%',
+          textAlign: 'center',
+          boxSizing: 'border-box'
+        }}>
+          LOCAL UI TEST – WALLET UI v2
+        </div>
+        <div className="container" style={{ marginTop: '40px' }}>
           <div className="header">
             <button className="back-btn" onClick={() => navigate('/')}>←</button>
             <h1>{t('deposit.title')}</h1>

@@ -45,23 +45,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If there is no Telegram context at all
       if (!hasTelegram) {
         if (isDev) {
-          // Mock Telegram user for local development
-          console.warn('🔧 DEV MODE: Telegram WebApp not available, using mock user');
-          const mockInitData = 'user=%7B%22id%22%3A123456789%7D&auth_date=' + Math.floor(Date.now() / 1000) + '&hash=mock-hash-dev';
+          // LOCAL DEV MODE: Bypass Telegram and API, use mock user directly
+          console.warn('🔧 LOCAL DEV MODE: Telegram WebApp not available, using mock user (NO API CALL)');
+          const mockUser: User = {
+            id: 'local-dev-user-id',
+            telegramId: '123456789',
+            firstName: 'Local',
+            lastName: 'Dev',
+            username: 'localdev',
+            kyatBalance: '100000',
+            isAdmin: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
           
-          const response = await api.post('/auth/telegram', { initData: mockInitData });
-          
-          const token = response.data.accessToken || response.data.access_token;
-          if (token) {
-            localStorage.setItem('token', token);
-            const userData = response.data.user;
-            if (userData) {
-              setUser(userData);
-            }
-            setAuthError(null);
-            setIsAuthReady(true);
-            socketService.connect(token);
-          }
+          // Set mock user directly without API call
+          setUser(mockUser);
+          setAuthError(null);
+          setIsAuthReady(true);
+          // Don't connect socket in dev mode
+          console.log('✅ LOCAL DEV: Mock user set, isAuthReady = true');
           return;
         } else {
           // Production: Telegram WebApp required

@@ -23,6 +23,7 @@ interface Withdrawal {
 }
 
 export default function Wallet() {
+  console.log('🔥 RENDERING FILE: apps/frontend-miniapp/src/pages/Wallet.tsx (OLD UI)');
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();

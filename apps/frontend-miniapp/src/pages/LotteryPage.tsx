@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { NumberGrid } from '../components/NumberGrid';
 import { RoundPanel } from '../components/RoundPanel';
 import { PurchaseControl } from '../components/PurchaseControl';
@@ -23,12 +23,40 @@ import { UserRoundHistory } from '../components/UserRoundHistory';
 import api from '../services/api';
 import { socketService, RoundCompletedEvent } from '../services/socket';
 
+/**
+ * INVARIANT: This block grid must NEVER depend on backend, auth, wallet, or loading state.
+ * Blocks 1–25 are static UI and must always render instantly.
+ * 
+ * This constant ensures blocks exist before any API calls, authentication, or async operations.
+ * Stats (buyers, totalKyat) are optional overlays that update when API responds, but blocks
+ * themselves must render immediately on page load regardless of any external state.
+ */
+const STATIC_BLOCKS: NumberStats[] = Array.from({ length: 25 }, (_, i) => ({
+  id: i + 1,
+  buyers: 0,
+  totalKyat: 0,
+  isSelected: false,
+  isDisabled: false,
+}));
+
 const LotteryPage: React.FC = () => {
   const { user, refreshUser, isAuthReady } = useAuth();
-  const { activeRound, numbers, userStake, loading: dataLoading, error: dataError, refetch } = useLotteryData();
+  const { activeRound, blockStats, userStake, loading: dataLoading, error: dataError, refetch } = useLotteryData();
   const [language, setLanguage] = useState<Language>('my');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [numbersState, setNumbersState] = useState<NumberStats[]>(numbers);
+  
+  // Merge static blocks with API stats (stats are optional overlays)
+  const numbersState = useMemo(() => {
+    return STATIC_BLOCKS.map(block => {
+      const stats = blockStats?.get(block.id);
+      return {
+        ...block,
+        buyers: stats?.buyers || 0,
+        totalKyat: stats?.totalKyat || 0,
+        isSelected: selectedIds.includes(block.id),
+      };
+    });
+  }, [blockStats, selectedIds]);
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isPointsOpen, setIsPointsOpen] = useState(false);
   const [buying, setBuying] = useState(false);
@@ -47,10 +75,6 @@ const LotteryPage: React.FC = () => {
 
   // Countdown is ONLY for display - no popup triggering logic
   const { countdown } = useCountdown(activeRound?.drawTime || null);
-
-  useEffect(() => {
-    setNumbersState(numbers);
-  }, [numbers]);
 
   // Load initial recent winners on mount (fallback if no socket events yet)
   useEffect(() => {
@@ -382,13 +406,13 @@ const LotteryPage: React.FC = () => {
                       </p>
                     </div>
 
-                    {/* Lottery data error / retry fallback */}
+                    {/* Non-blocking error banner - blocks still render below */}
                     {dataError && (
                       <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 flex items-center justify-between">
                         <span className="mr-2">
                           {language === 'en'
-                            ? 'Unable to load round data. Please try again.'
-                            : 'ပွဲစဉ်ဒေတာ မဖတ်ရနိုင်သေးပါ။ ထပ်မံကြိုးစားပါ။'}
+                            ? 'Unable to load round data. Blocks are still available.'
+                            : 'ပွဲစဉ်ဒေတာ မဖတ်ရနိုင်သေးပါ။ နံပါတ်များ ဆက်လက်ရရှိနိုင်ပါသည်။'}
                         </span>
                         <button
                           onClick={() => refetch()}
@@ -399,6 +423,7 @@ const LotteryPage: React.FC = () => {
                       </div>
                     )}
                     
+                    {/* BLOCKS ALWAYS RENDER - NO CONDITIONS */}
                     <NumberGrid 
                         numbers={numbersState} 
                         selectedIds={selectedIds} 

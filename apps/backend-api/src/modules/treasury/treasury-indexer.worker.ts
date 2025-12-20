@@ -26,23 +26,29 @@ export class TreasuryIndexerWorker implements OnModuleInit {
   }
 
   async onModuleInit() {
-    const treasuryIndexerEnabled = this.configService.get('TREASURY_INDEXER_ENABLED') === 'true';
+    // Strict flag check: only enable if env value is exactly the string "true"
+    const flagValue = this.configService.get('TREASURY_INDEXER_ENABLED');
+    const treasuryIndexerEnabled = flagValue === 'true';
     const isDev = this.configService.get('NODE_ENV') === 'development';
 
+    // Log current flag state for debugging
+    this.logger.log(`[TREASURY INDEXER] Flag value: "${flagValue}" (type: ${typeof flagValue})`);
+
     if (isDev && !treasuryIndexerEnabled) {
-      this.logger.warn('[TREASURY INDEXER] Disabled in development mode');
+      this.logger.warn('[TREASURY INDEXER] ❌ DISABLED - Development mode and flag not set to "true"');
       this.isEnabled = false;
       return;
     }
 
     if (!treasuryIndexerEnabled) {
-      this.logger.warn('[TREASURY INDEXER] Disabled (TREASURY_INDEXER_ENABLED !== true)');
+      this.logger.warn('[TREASURY INDEXER] ❌ DISABLED - TREASURY_INDEXER_ENABLED must be exactly "true"');
+      this.logger.warn('[TREASURY INDEXER] Current value:', flagValue === undefined ? 'undefined' : `"${flagValue}"`);
       this.isEnabled = false;
       return;
     }
 
     this.isEnabled = true;
-    this.logger.log('[TREASURY INDEXER] Worker initialized and enabled');
+    this.logger.log('[TREASURY INDEXER] ✅ ENABLED - Worker initialized and running');
   }
 
   private getTonApiHeaders(): Record<string, string> {
