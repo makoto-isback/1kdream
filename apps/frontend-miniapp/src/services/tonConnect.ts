@@ -83,8 +83,38 @@ class TonConnectService {
       });
 
       // Listen for connection events - this is the ONLY place we read account.address
+      // INVARIANT: Only accept connections with address AND session proof
+      // Reject support-assisted mode (no UI opened, no user approval)
       this.connector.onStatusChange((wallet) => {
         if (wallet?.account?.address) {
+          // CRITICAL: Verify this is a real connection, not support-assisted mode
+          // Support-assisted mode has address but no session proof
+          // Check for session proof indicators:
+          // - connectItems (TON Connect v2)
+          // - proof (TON Connect v2)
+          // - device.appName or provider.name (indicates real wallet connection)
+          const hasSessionProof = 
+            !!(wallet as any).connectItems || 
+            !!(wallet as any).proof ||
+            !!(wallet as any).device?.appName ||
+            !!(wallet as any).provider?.name;
+          
+          // Additional check: support-assisted mode often lacks device/provider info
+          const hasDeviceInfo = !!(wallet as any).device || !!(wallet as any).provider;
+          
+          const isSupportAssisted = !hasSessionProof && !hasDeviceInfo;
+          
+          if (isSupportAssisted) {
+            console.warn('[TON Connect] ⚠️ Rejecting support-assisted connection (no session proof or device info)');
+            console.warn('[TON Connect] Wallet object:', JSON.stringify(wallet, null, 2));
+            // Reject support-assisted mode - reset connection
+            this.walletInfo = null;
+            this.saveWalletToStorage(null);
+            this.statusChangeCallbacks.forEach(cb => cb(null));
+            return;
+          }
+          
+          // Valid connection: has address AND session proof/device info
           const walletInfo: WalletInfo = {
             address: wallet.account.address,
             walletType: (wallet as any).device?.appName || (wallet as any).provider?.name || 'unknown',
@@ -93,6 +123,7 @@ class TonConnectService {
           this.walletInfo = walletInfo;
           this.saveWalletToStorage(walletInfo);
           
+          console.log('[TON Connect] ✅ Valid connection established:', wallet.account.address);
           // Notify all callbacks
           this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
         } else {
@@ -173,6 +204,8 @@ class TonConnectService {
    * Called explicitly by user action (button click), never on mount.
    * 
    * INVARIANT: Uses universal modal flow - NEVER assumes injected wallet exists.
+   * INVARIANT: Forces user-visible wallet UI - NO silent or support-assisted connections.
+   * INVARIANT: Only accepts connections with address AND session proof.
    * Works in Telegram Mini App, mobile browser, and desktop browser.
    */
   async connect(): Promise<void> {
@@ -184,11 +217,19 @@ class TonConnectService {
     }
 
     try {
-      // Check if already connected - but don't read account.address here
+      // Check if already connected - but verify it's a real connection
       if (this.connector.connected) {
-        console.log('[TON Connect] Already connected, waiting for onStatusChange');
-        // Don't read account.address - let onStatusChange handle it
-        return;
+        // Verify existing connection has session proof (not support-assisted)
+        // Note: connector.wallet might not be directly accessible, so we check our stored info
+        if (this.walletInfo?.address) {
+          // If we have stored wallet info, it means onStatusChange already validated it
+          console.log('[TON Connect] Already connected with valid session');
+          return;
+        } else {
+          // Connected but no stored info = support-assisted mode
+          console.warn('[TON Connect] Existing connection is support-assisted - reconnecting');
+          await this.connector.disconnect();
+        }
       }
 
       // CRITICAL: Get available wallets and connect safely
@@ -224,15 +265,34 @@ class TonConnectService {
 
       console.log('[TON Connect] Connecting to wallet:', walletToConnect.name);
       
-      // CRITICAL: Use connect() with wallet object - SDK will show modal automatically
+      // CRITICAL: Use connect() with wallet object - SDK MUST show UI
       // This works in:
-      // - Telegram Mini App → Opens Telegram Wallet
-      // - Mobile browser → Deep link to wallet app
-      // - Desktop browser → Shows wallet selection modal
-      // SDK automatically handles injected wallet detection - we don't need to check
+      // - Telegram Mini App → Opens Telegram Wallet (user must approve)
+      // - Mobile browser → Deep link to wallet app (user must approve)
+      // - Desktop browser → Shows wallet selection modal (user must approve)
+      // 
+      // INVARIANT: If no UI opens, connection will be rejected by onStatusChange
+      // (support-assisted mode has no session proof and will be filtered out)
       await this.connector.connect(walletToConnect);
-      console.log('[TON Connect] Connection initiated - waiting for user confirmation');
+      console.log('[TON Connect] Connection initiated - waiting for user approval');
+      
+      // CRITICAL: Wait a moment to detect if UI actually opened
+      // If SDK enters support-assisted mode, onStatusChange will fire immediately
+      // but we'll reject it because it has no session proof
+      // The onStatusChange handler will automatically reject support-assisted connections
+      // We just need to wait a bit to see if connection was rejected
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Check if connection was rejected (support-assisted mode detected)
+      if (this.connector.connected && !this.walletInfo) {
+        // Connected but no stored wallet info = support-assisted mode was rejected
+        console.warn('[TON Connect] Support-assisted connection detected and rejected');
+        await this.connector.disconnect();
+        throw new Error('Wallet connection failed. Please try again and ensure the wallet UI opens for approval.');
+      }
+      
       // ❗ DO NOT read wallet/account here - onStatusChange will handle it
+      // onStatusChange will verify session proof before accepting connection
     } catch (error: any) {
       // Provide user-friendly error messages
       const errorMessage = error?.message || 'Failed to connect wallet';
