@@ -93,9 +93,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         if (storedInfo) {
           setWalletType(storedInfo.walletType);
         }
+        // CRITICAL: Reset connecting state when connection succeeds
+        setIsConnecting(false);
       } else {
         setWalletAddress(null);
         setWalletType('unknown');
+        // CRITICAL: Reset connecting state when connection fails or disconnects
+        setIsConnecting(false);
       }
       // No need to set isLoading here - it's only for connection attempts
     });
@@ -134,16 +138,19 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       await tonConnectService.connect();
       // ❗ DO NOT read wallet address here - onStatusChange will update state
       console.log('[Wallet Context] Connect triggered, waiting for onStatusChange');
+      
+      // CRITICAL: Don't reset isConnecting immediately
+      // onStatusChange will fire when connection succeeds or fails
+      // We'll reset isConnecting in the onStatusChange handler
+      // But set a timeout as fallback (in case onStatusChange never fires)
+      setTimeout(() => {
+        setIsConnecting(false);
+      }, 30000); // 30 second timeout - user should have approved by then
     } catch (error) {
       // Log error but rethrow so UI can show error message
       console.error('[Wallet Context] Connect error:', error);
       setIsConnecting(false);
       throw error;
-    } finally {
-      // Reset connecting state after a delay (onStatusChange will handle wallet state)
-      setTimeout(() => {
-        setIsConnecting(false);
-      }, 2000);
     }
   };
 

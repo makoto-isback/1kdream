@@ -93,16 +93,26 @@ class TonConnectService {
           // - connectItems (TON Connect v2)
           // - proof (TON Connect v2)
           // - device.appName or provider.name (indicates real wallet connection)
+          // - wallet.appName (Telegram Wallet in Mini App)
           const hasSessionProof = 
             !!(wallet as any).connectItems || 
             !!(wallet as any).proof ||
             !!(wallet as any).device?.appName ||
-            !!(wallet as any).provider?.name;
+            !!(wallet as any).provider?.name ||
+            !!(wallet as any).walletAppName;
           
           // Additional check: support-assisted mode often lacks device/provider info
           const hasDeviceInfo = !!(wallet as any).device || !!(wallet as any).provider;
           
-          const isSupportAssisted = !hasSessionProof && !hasDeviceInfo;
+          // In Telegram Mini App, be less strict - Telegram Wallet might not have all properties
+          const isTelegramMiniApp = typeof window !== 'undefined' && !!(window as any).Telegram?.WebApp;
+          const isTelegramWallet = 
+            (wallet as any).device?.appName?.toLowerCase().includes('telegram') ||
+            (wallet as any).provider?.name?.toLowerCase().includes('telegram') ||
+            (wallet as any).walletAppName?.toLowerCase().includes('telegram');
+          
+          // Only reject if clearly support-assisted (no proof AND no device info AND not Telegram Wallet)
+          const isSupportAssisted = !hasSessionProof && !hasDeviceInfo && !(isTelegramMiniApp && isTelegramWallet);
           
           if (isSupportAssisted) {
             console.warn('[TON Connect] ⚠️ Rejecting support-assisted connection (no session proof or device info)');
@@ -251,19 +261,38 @@ class TonConnectService {
       // Use universal wallets if available, otherwise fall back to all wallets
       const availableWallets = universalWallets.length > 0 ? universalWallets : walletsList;
 
-      // In Telegram Mini App, prefer Telegram Wallet
-      // Otherwise, use first available universal wallet
-      const telegramWallet = availableWallets.find(w => 
-        w.name.toLowerCase().includes('telegram')
-      );
+      // CRITICAL: In Telegram Mini App, MUST connect to Telegram Wallet only
+      // Check if we're in Telegram Mini App environment
+      const isTelegramMiniApp = typeof window !== 'undefined' && !!(window as any).Telegram?.WebApp;
       
-      const walletToConnect = telegramWallet || availableWallets[0];
+      let walletToConnect;
+      
+      if (isTelegramMiniApp) {
+        // In Telegram Mini App, find Telegram Wallet specifically
+        const telegramWallet = availableWallets.find(w => 
+          w.name.toLowerCase().includes('telegram') || 
+          w.appName?.toLowerCase().includes('telegram') ||
+          w.aboutUrl?.includes('telegram')
+        );
+        
+        if (!telegramWallet) {
+          throw new Error('Telegram Wallet not found. Please ensure Telegram Wallet is available in your Telegram app.');
+        }
+        
+        walletToConnect = telegramWallet;
+        console.log('[TON Connect] Telegram Mini App detected - connecting to Telegram Wallet:', walletToConnect.name);
+      } else {
+        // In browser, prefer Telegram Wallet but allow others
+        const telegramWallet = availableWallets.find(w => 
+          w.name.toLowerCase().includes('telegram')
+        );
+        walletToConnect = telegramWallet || availableWallets[0];
+        console.log('[TON Connect] Browser environment - connecting to wallet:', walletToConnect.name);
+      }
 
       if (!walletToConnect) {
         throw new Error('No compatible TON wallet found. Please install a TON wallet app.');
       }
-
-      console.log('[TON Connect] Connecting to wallet:', walletToConnect.name);
       
       // CRITICAL: Use connect() with wallet object - SDK MUST show UI
       // This works in:
@@ -274,22 +303,12 @@ class TonConnectService {
       // INVARIANT: If no UI opens, connection will be rejected by onStatusChange
       // (support-assisted mode has no session proof and will be filtered out)
       await this.connector.connect(walletToConnect);
-      console.log('[TON Connect] Connection initiated - waiting for user approval');
+      console.log('[TON Connect] Connection initiated - waiting for user approval in Telegram Wallet');
       
-      // CRITICAL: Wait a moment to detect if UI actually opened
-      // If SDK enters support-assisted mode, onStatusChange will fire immediately
-      // but we'll reject it because it has no session proof
-      // The onStatusChange handler will automatically reject support-assisted connections
-      // We just need to wait a bit to see if connection was rejected
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check if connection was rejected (support-assisted mode detected)
-      if (this.connector.connected && !this.walletInfo) {
-        // Connected but no stored wallet info = support-assisted mode was rejected
-        console.warn('[TON Connect] Support-assisted connection detected and rejected');
-        await this.connector.disconnect();
-        throw new Error('Wallet connection failed. Please try again and ensure the wallet UI opens for approval.');
-      }
+      // In Telegram Mini App, don't wait - let onStatusChange handle the result
+      // The wallet UI will open and user will approve/reject
+      // onStatusChange will fire when connection is established or rejected
+      // No need to check for support-assisted mode here - onStatusChange handles it
       
       // ❗ DO NOT read wallet/account here - onStatusChange will handle it
       // onStatusChange will verify session proof before accepting connection
