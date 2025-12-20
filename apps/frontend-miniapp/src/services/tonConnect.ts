@@ -341,24 +341,41 @@ class TonConnectService {
         throw new Error('No compatible TON wallet found. Please install a TON wallet app.');
       }
       
-      // CRITICAL: Use connect() with wallet object - SDK MUST show UI
-      // According to TON docs, in Telegram Mini App, connector.connect() should
-      // automatically open Telegram Wallet UI for user approval
+      // CRITICAL: In Telegram Mini App, connector.connect() might not open UI automatically
+      // We need to manually open the universalLink to trigger Telegram Wallet UI
+      // According to TON Connect SDK, in Telegram Mini App we should use Telegram.WebApp.openLink()
+      if (isTelegramMiniApp && walletToConnect.universalLink) {
+        console.log('[TON Connect] 🔄 Opening Telegram Wallet via universalLink');
+        console.log('[TON Connect] Universal link:', walletToConnect.universalLink);
+        
+        // In Telegram Mini App, use Telegram.WebApp.openLink() to open wallet
+        // This ensures proper Mini App handling and UI opening
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg && typeof tg.openLink === 'function') {
+          // Use Telegram's openLink method for proper Mini App handling
+          tg.openLink(walletToConnect.universalLink, { try_instant_view: false });
+          console.log('[TON Connect] ✅ Telegram Wallet UI opened via Telegram.WebApp.openLink()');
+          console.log('[TON Connect] Waiting for user approval - onStatusChange will fire when user returns');
+        } else {
+          // Fallback: direct window.location (shouldn't happen in Telegram Mini App)
+          console.warn('[TON Connect] ⚠️ Telegram.WebApp.openLink not available, using window.location');
+          window.location.href = walletToConnect.universalLink;
+        }
+        
+        // Don't await - the redirect happens immediately
+        // Connection will be handled when user returns from wallet approval
+        // onStatusChange will fire when connection completes
+        // The SDK will handle the connection flow automatically
+        return;
+      }
+      
+      // For browser environments (not Telegram Mini App), use standard connect()
       // This works in:
-      // - Telegram Mini App → Opens Telegram Wallet (user must approve)
       // - Mobile browser → Deep link to wallet app (user must approve)
       // - Desktop browser → Shows wallet selection modal (user must approve)
-      // 
-      // INVARIANT: If no UI opens, connection will be rejected by onStatusChange
-      // (support-assisted mode has no session proof and will be filtered out)
       console.log('[TON Connect] 🔄 Calling connector.connect() with wallet:', walletToConnect.name);
       await this.connector.connect(walletToConnect);
-      console.log('[TON Connect] ✅ Connection request sent - waiting for user approval in Telegram Wallet');
-      
-      // In Telegram Mini App, don't wait - let onStatusChange handle the result
-      // The wallet UI will open and user will approve/reject
-      // onStatusChange will fire when connection is established or rejected
-      // No need to check for support-assisted mode here - onStatusChange handles it
+      console.log('[TON Connect] ✅ Connection request sent - waiting for user approval');
       
       // ❗ DO NOT read wallet/account here - onStatusChange will handle it
       // onStatusChange will verify session proof before accepting connection

@@ -90,7 +90,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         hasWallet: !!wallet,
         hasAddress: !!wallet?.address,
         address: wallet?.address,
-        isConnecting: isConnecting
+        isConnecting: isConnecting,
+        fullWallet: wallet  // Log entire wallet object for debugging
       });
       
       if (wallet?.address) {
