@@ -89,7 +89,40 @@ class TonConnectService {
         // SDK will automatically detect environment and show appropriate modal
       });
 
-      // Listen for connection events - this is the ONLY place we read account.address
+      // CRITICAL: Sync TonConnectUI and TonConnectSDK connection state
+      // Both should share the same storage, but we listen to both to ensure UI updates
+      // TonConnectUI handles the connection UI, SDK handles operations
+      // This ensures UI updates when user returns from wallet approval
+      this.tonConnectUI.onStatusChange((wallet) => {
+        console.log('[TON Connect UI] 🔔 onStatusChange fired:', {
+          hasWallet: !!wallet,
+          hasAddress: !!wallet?.account?.address,
+          address: wallet?.account?.address,
+        });
+        
+        // Sync connection state when TonConnectUI detects connection
+        // This ensures UI updates when user returns from wallet approval
+        if (wallet?.account?.address) {
+          const walletInfo: WalletInfo = {
+            address: wallet.account.address,
+            walletType: (wallet as any).device?.appName || (wallet as any).provider?.name || 'unknown',
+            connected: true,
+          };
+          this.walletInfo = walletInfo;
+          this.saveWalletToStorage(walletInfo);
+          
+          console.log('[TON Connect UI] ✅ Connection synced:', wallet.account.address);
+          // Notify all callbacks to update UI
+          this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
+        } else {
+          // Disconnected
+          this.walletInfo = null;
+          this.saveWalletToStorage(null);
+          this.statusChangeCallbacks.forEach(cb => cb(null));
+        }
+      });
+
+      // Listen for connection events from SDK - this is the ONLY place we read account.address
       // INVARIANT: Only accept connections with address AND session proof
       // Reject support-assisted mode (no UI opened, no user approval)
       this.connector.onStatusChange((wallet) => {

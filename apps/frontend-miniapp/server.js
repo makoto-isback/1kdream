@@ -10,6 +10,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const distPath = join(__dirname, 'dist');
 
+// Add CORS headers for TON Connect manifest (wallet needs to fetch this from walletbot.me)
+app.use((req, res, next) => {
+  if (req.path.includes('tonconnect-manifest.json')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  next();
+});
+
+// Handle OPTIONS preflight for manifest
+app.options('/tonconnect-manifest.json', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
 // Serve static files from dist directory
 app.use(express.static(distPath, {
   // Don't set index: false, let it serve index.html for root
