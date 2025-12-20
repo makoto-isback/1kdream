@@ -390,11 +390,15 @@ class TonConnectService {
     }
 
     try {
+      // Disconnect SDK (this also clears shared storage used by TonConnectUI)
       if (this.connector.connected) {
         await this.connector.disconnect();
       }
+      // Clear our stored wallet info
       this.walletInfo = null;
       this.saveWalletToStorage(null);
+      // Notify callbacks that we disconnected
+      this.statusChangeCallbacks.forEach(cb => cb(null));
     } catch (error) {
       console.error('[TON Connect] Disconnect error:', error);
     }
@@ -427,8 +431,54 @@ class TonConnectService {
     // Initialize only when actually needed (user action)
     this.ensureInitialized();
 
-    if (!this.connector || !this.connector.connected) {
+    // CRITICAL: Check BOTH connector.connected AND walletInfo.address
+    // TonConnectUI might show address but SDK might not be connected
+    // This can happen if disconnect didn't fully clear both states
+    if (!this.connector) {
       throw new Error('Wallet not connected');
+    }
+
+    // Check connector connection state
+    if (!this.connector.connected) {
+      // If we have walletInfo but connector is not connected, there's a state mismatch
+      // This means the UI shows connected but SDK is disconnected
+      if (this.walletInfo?.address) {
+        console.warn('[TON Connect] State mismatch: walletInfo exists but connector not connected');
+        console.warn('[TON Connect] Clearing stale walletInfo and asking user to reconnect');
+        // Clear stale walletInfo
+        this.walletInfo = null;
+        this.saveWalletToStorage(null);
+        this.statusChangeCallbacks.forEach(cb => cb(null));
+        throw new Error('Wallet connection lost. Please reconnect your wallet.');
+      }
+      throw new Error('Wallet not connected');
+    }
+
+    // Double-check: ensure walletInfo matches connector state
+    // If connector is connected but we don't have walletInfo, try to sync
+    if (!this.walletInfo?.address) {
+      console.warn('[TON Connect] Connector connected but no walletInfo. Syncing state...');
+      // Try to get wallet from connector
+      try {
+        const wallet = (this.connector as any).wallet;
+        if (wallet?.account?.address) {
+          const walletInfo: WalletInfo = {
+            address: wallet.account.address,
+            walletType: (wallet as any).device?.appName || (wallet as any).provider?.name || 'unknown',
+            connected: true,
+          };
+          this.walletInfo = walletInfo;
+          this.saveWalletToStorage(walletInfo);
+          // Notify callbacks to update UI
+          this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
+          console.log('[TON Connect] ✅ State synced:', wallet.account.address);
+        } else {
+          throw new Error('Wallet not connected');
+        }
+      } catch (syncError) {
+        console.error('[TON Connect] Failed to sync wallet state:', syncError);
+        throw new Error('Wallet not connected');
+      }
     }
 
     try {
