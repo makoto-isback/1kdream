@@ -321,8 +321,15 @@ class TonConnectService {
       }
 
       // If we reach here, SDK connector is NOT connected
-      // But TonConnectUI might think it's connected (from stale storage)
-      // We need to clear any stale state before calling openModal()
+      // But TonConnectUI might think it's connected (from stale storage/internal state)
+      // CRITICAL: Disconnect SDK FIRST to make TonConnectUI see the disconnect
+      // This ensures both SDK and TonConnectUI clear their internal state
+      if (this.connector.connected) {
+        console.log('[TON Connect] Disconnecting SDK connector to sync TonConnectUI state');
+        await this.connector.disconnect();
+        // Wait for disconnect to propagate to TonConnectUI
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
       
       // Clear walletInfo if it exists (it's stale if connector is not connected)
       if (this.walletInfo?.address) {
@@ -346,8 +353,8 @@ class TonConnectService {
         console.warn('[TON Connect] Failed to clear shared storage:', e);
       }
 
-      // Wait for storage clear to propagate
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Wait for storage clear to propagate and TonConnectUI to sync
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // CRITICAL: Get available wallets and connect safely
       // NEVER assume injected wallet exists - SDK will handle environment detection
@@ -407,24 +414,31 @@ class TonConnectService {
       
       // Check for "already connected" error from TonConnectUI
       if (errorMessage.includes('already connected')) {
-        console.warn('[TON Connect] TonConnectUI thinks it\'s connected but SDK is not - clearing state');
-        // Clear everything and try again
+        console.warn('[TON Connect] TonConnectUI thinks it\'s connected - forcing disconnect and retry');
+        // Force disconnect SDK FIRST (this should trigger TonConnectUI to also disconnect)
         try {
           if (this.connector?.connected) {
+            console.log('[TON Connect] Disconnecting SDK connector to force TonConnectUI disconnect');
             await this.connector.disconnect();
+            // Wait for disconnect to propagate
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
+          // Clear everything
           this.walletInfo = null;
           this.saveWalletToStorage(null);
           // Clear shared storage
           if (typeof window !== 'undefined' && window.localStorage) {
             const tonConnectStorageKey = 'ton-connect-storage';
             localStorage.removeItem(tonConnectStorageKey);
+            console.log('[TON Connect] Cleared shared storage in error handler');
           }
           this.statusChangeCallbacks.forEach(cb => cb(null));
-          // Wait and retry
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Wait longer for TonConnectUI to sync with disconnected state
+          console.log('[TON Connect] Waiting for TonConnectUI to sync with disconnected state');
+          await new Promise(resolve => setTimeout(resolve, 1000));
           // Retry opening modal
           if (this.tonConnectUI) {
+            console.log('[TON Connect] Retrying openModal after forced disconnect');
             await this.tonConnectUI.openModal();
           }
         } catch (retryError) {
