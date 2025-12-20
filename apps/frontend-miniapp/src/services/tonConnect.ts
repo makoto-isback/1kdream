@@ -410,6 +410,15 @@ class TonConnectService {
       // Use universal wallets if available, otherwise fall back to all wallets
       const availableWallets = universalWallets.length > 0 ? universalWallets : walletsList;
 
+      // CRITICAL: Final check - ensure SDK is NOT connected before opening modal
+      // TonConnectUI.restoreConnection() might have reconnected the SDK
+      // We need to disconnect it one more time right before openModal()
+      if (this.connector.connected) {
+        console.warn('[TON Connect] ⚠️ SDK reconnected by TonConnectUI.restoreConnection() - disconnecting again');
+        await this.connector.disconnect();
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
       // CRITICAL: Use TonConnectUI to handle wallet connection UI
       // This automatically generates the correct connection URL and opens the wallet UI
       // Works in both Telegram Mini App and browser environments
@@ -418,6 +427,7 @@ class TonConnectService {
       }
 
       console.log('[TON Connect] 🔄 Opening wallet connection modal via TonConnectUI');
+      console.log('[TON Connect] Final state check - SDK connected:', this.connector.connected);
       
       // Use TonConnectUI.openModal() to show wallet selection modal
       // This will:
