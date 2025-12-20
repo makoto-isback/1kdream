@@ -53,6 +53,23 @@ class TonConnectService {
     }
 
     try {
+      // CRITICAL: Clear storage BEFORE initializing TonConnectUI
+      // TonConnectUI automatically restores connection from storage when created
+      // If storage has stale connection, TonConnectUI will restore it and think it's connected
+      // By clearing storage first, TonConnectUI won't restore a stale connection
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const tonConnectStorageKey = 'ton-connect-storage';
+          const hadStorage = !!localStorage.getItem(tonConnectStorageKey);
+          if (hadStorage) {
+            localStorage.removeItem(tonConnectStorageKey);
+            console.log('[TON Connect] Cleared TON Connect shared storage before initialization (prevents stale restore)');
+          }
+        }
+      } catch (e) {
+        console.warn('[TON Connect] Failed to clear storage before initialization:', e);
+      }
+
       this.initializeConnector();
       this.loadWalletFromStorage();
       this.initialized = true;
@@ -339,8 +356,9 @@ class TonConnectService {
         this.statusChangeCallbacks.forEach(cb => cb(null));
       }
 
-      // Clear shared storage to ensure TonConnectUI also sees disconnected state
-      // This prevents TonConnectUI from thinking it's connected when SDK is not
+      // CRITICAL: Clear shared storage AND force TonConnectUI to disconnect
+      // TonConnectUI might have restored connection during initialization
+      // We need to ensure it's disconnected before calling openModal()
       try {
         // Clear TON Connect storage (shared by both SDK and UI)
         if (typeof window !== 'undefined' && window.localStorage) {
@@ -353,8 +371,15 @@ class TonConnectService {
         console.warn('[TON Connect] Failed to clear shared storage:', e);
       }
 
-      // Wait for storage clear to propagate and TonConnectUI to sync
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // CRITICAL: Force disconnect SDK again to ensure TonConnectUI sees it
+      // This handles the case where TonConnectUI restored connection during initialization
+      if (this.connector.connected) {
+        console.log('[TON Connect] Force disconnecting SDK again to ensure TonConnectUI syncs');
+        await this.connector.disconnect();
+      }
+
+      // Wait for disconnect to propagate and TonConnectUI to sync
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // CRITICAL: Get available wallets and connect safely
       // NEVER assume injected wallet exists - SDK will handle environment detection
