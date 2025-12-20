@@ -298,19 +298,29 @@ class TonConnectService {
       // DO NOT manually open links - SDK handles this internally
       
       if (isTelegramMiniApp) {
-        // In Telegram Mini App, call connect() without parameters
-        // This allows SDK to show the wallet selection modal
-        // User will see "Connect Wallet in Telegram" button and other options
-        console.log('[TON Connect] 🔄 Calling connector.connect() without parameters - SDK will show wallet selection modal');
-        console.log('[TON Connect] Available wallets:', availableWallets.length);
+        // In Telegram Mini App, find Telegram Wallet and connect directly
+        // This avoids injected wallet detection errors
+        // SDK will show connection approval dialog (second screenshot)
+        const telegramWallet = availableWallets.find(w => {
+          const name = (w.name || '').toLowerCase();
+          const appName = ((w as any).appName || '').toLowerCase();
+          return name.includes('telegram') || 
+                 name === 'wallet' ||
+                 appName.includes('telegram');
+        });
         
-        // Call connect() without wallet parameter - SDK will show modal
-        // The modal will include "Connect Wallet in Telegram" as the primary option
-        await this.connector.connect();
-        console.log('[TON Connect] ✅ Wallet selection modal should now be visible');
-        console.log('[TON Connect] User will select wallet and see approval dialog');
+        if (!telegramWallet) {
+          throw new Error('Telegram Wallet not found. Please ensure Telegram Wallet is available.');
+        }
+        
+        console.log('[TON Connect] 🔄 Telegram Mini App - Connecting to Telegram Wallet:', telegramWallet.name);
+        console.log('[TON Connect] SDK will show connection approval dialog');
+        
+        // Connect directly to Telegram Wallet - SDK will show approval dialog
+        await this.connector.connect(telegramWallet);
+        console.log('[TON Connect] ✅ Connection request sent - approval dialog should be visible');
       } else {
-        // In browser, we can still use specific wallet or let SDK show modal
+        // In browser, show wallet selection modal
         // Prefer Telegram Wallet if available, otherwise show modal
         const telegramWallet = availableWallets.find(w => 
           w.name.toLowerCase().includes('telegram')
@@ -321,7 +331,18 @@ class TonConnectService {
           await this.connector.connect(telegramWallet);
         } else {
           console.log('[TON Connect] 🔄 Browser - Showing wallet selection modal');
-          await this.connector.connect();
+          // In browser, try to show modal - if it fails with injected wallet error, connect to first available
+          try {
+            await this.connector.connect();
+          } catch (error: any) {
+            const errorMsg = error?.message || '';
+            if (errorMsg.includes('jsBridgeKey') || errorMsg.includes('injected')) {
+              console.warn('[TON Connect] ⚠️ Injected wallet error, connecting to first available wallet');
+              await this.connector.connect(availableWallets[0]);
+            } else {
+              throw error;
+            }
+          }
         }
         console.log('[TON Connect] ✅ Connection request initiated - SDK should show UI');
       }
