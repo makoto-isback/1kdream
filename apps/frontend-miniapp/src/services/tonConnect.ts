@@ -125,13 +125,16 @@ class TonConnectService {
       // Listen for connection events from SDK - this is the ONLY place we read account.address
       // INVARIANT: Only accept connections with address AND session proof
       // Reject support-assisted mode (no UI opened, no user approval)
+      // CRITICAL: This is the SOURCE OF TRUTH for connection state
+      // Only when this fires with an address should we show "connected" in UI
       this.connector.onStatusChange((wallet) => {
         // CRITICAL: Add detailed logging to debug connection issues
-        console.log('[TON Connect] 🔔 onStatusChange fired:', {
+        console.log('[TON Connect SDK] 🔔 onStatusChange fired:', {
           hasWallet: !!wallet,
           hasAccount: !!wallet?.account,
           hasAddress: !!wallet?.account?.address,
           address: wallet?.account?.address,
+          connectorConnected: this.connector?.connected,
           device: (wallet as any)?.device,
           provider: (wallet as any)?.provider,
           walletAppName: (wallet as any)?.walletAppName,
@@ -189,8 +192,10 @@ class TonConnectService {
           this.walletInfo = walletInfo;
           this.saveWalletToStorage(walletInfo);
           
-          console.log('[TON Connect] ✅ Valid connection established:', wallet.account.address);
-          // Notify all callbacks
+          console.log('[TON Connect SDK] ✅ Valid connection established:', wallet.account.address);
+          console.log('[TON Connect SDK] ✅ Notifying callbacks - UI will show connected');
+          // CRITICAL: This is the ONLY place we should notify callbacks
+          // This ensures UI only shows "connected" when SDK connector is actually connected
           this.statusChangeCallbacks.forEach(cb => cb({ address: wallet.account.address }));
         } else {
           this.walletInfo = null;
@@ -218,11 +223,12 @@ class TonConnectService {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
+        // CRITICAL: Load from storage but DON'T notify callbacks yet
+        // Storage might be stale - connector might not be connected
+        // We'll only notify callbacks when connector.onStatusChange confirms the connection
+        // This prevents showing "connected" when SDK is actually disconnected
         this.walletInfo = parsed;
-        // Notify callbacks if we have stored wallet info (sync, no initialization)
-        if (parsed?.address) {
-          this.statusChangeCallbacks.forEach(cb => cb({ address: parsed.address }));
-        }
+        console.log('[TON Connect] Loaded wallet from storage:', parsed?.address, '(not notifying callbacks until connector verifies)');
       }
     } catch (error) {
       console.error('[TON Connect] Failed to load wallet from storage:', error);
@@ -253,11 +259,12 @@ class TonConnectService {
   onStatusChange(callback: StatusChangeCallback): () => void {
     this.statusChangeCallbacks.push(callback);
     
-    // Immediately call with current state if available (from storage, no initialization)
-    // This is safe - it only reads cached walletInfo, doesn't trigger ensureInitialized()
-    if (this.walletInfo?.address) {
-      callback({ address: this.walletInfo.address });
-    }
+    // CRITICAL: Don't immediately call with stored walletInfo
+    // Storage might be stale - only trust connector's actual connection state
+    // Wait for connector.onStatusChange to fire and verify connection
+    // This prevents showing "connected" when SDK is actually disconnected
+    // If connector is initialized and connected, it will fire onStatusChange
+    // If connector is not initialized, we'll wait until user clicks connect()
     
     // Return unsubscribe function
     return () => {
