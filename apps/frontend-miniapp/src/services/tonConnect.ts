@@ -53,17 +53,36 @@ class TonConnectService {
     }
 
     try {
-      // CRITICAL: Clear storage BEFORE initializing TonConnectUI
+      // CRITICAL: Clear ALL TON Connect storage keys BEFORE initializing TonConnectUI
       // TonConnectUI automatically restores connection from storage when created
-      // If storage has stale connection, TonConnectUI will restore it and think it's connected
-      // By clearing storage first, TonConnectUI won't restore a stale connection
+      // According to TON Connect docs, sessions are stored as: tonconnect_session_${sessionId}
+      // We need to clear ALL session keys to prevent restoreConnection from working
       try {
         if (typeof window !== 'undefined' && window.localStorage) {
+          // Clear the shared storage key (used by UI library)
           const tonConnectStorageKey = 'ton-connect-storage';
           const hadStorage = !!localStorage.getItem(tonConnectStorageKey);
           if (hadStorage) {
             localStorage.removeItem(tonConnectStorageKey);
-            console.log('[TON Connect] Cleared TON Connect shared storage before initialization (prevents stale restore)');
+            console.log('[TON Connect] Cleared shared storage key: ton-connect-storage');
+          }
+
+          // CRITICAL: Clear ALL session keys matching pattern: tonconnect_session_*
+          // These are the actual connection sessions that restoreConnection uses
+          const allKeys = Object.keys(localStorage);
+          const sessionKeys = allKeys.filter(key => 
+            key.startsWith('tonconnect_session_') || 
+            key.startsWith('ton-connect-session_') ||
+            key.toLowerCase().includes('tonconnect_session')
+          );
+          
+          sessionKeys.forEach(key => {
+            localStorage.removeItem(key);
+            console.log(`[TON Connect] Cleared session key: ${key}`);
+          });
+
+          if (sessionKeys.length > 0) {
+            console.log(`[TON Connect] Cleared ${sessionKeys.length} session key(s) before initialization`);
           }
         }
       } catch (e) {
@@ -356,19 +375,38 @@ class TonConnectService {
         this.statusChangeCallbacks.forEach(cb => cb(null));
       }
 
-      // CRITICAL: Clear shared storage AND force TonConnectUI to disconnect
-      // TonConnectUI might have restored connection during initialization
-      // We need to ensure it's disconnected before calling openModal()
+      // CRITICAL: Clear ALL TON Connect storage keys
+      // According to TON Connect docs, sessions are stored as: tonconnect_session_${sessionId}
+      // We must clear ALL session keys to prevent restoreConnection from reconnecting
       try {
-        // Clear TON Connect storage (shared by both SDK and UI)
         if (typeof window !== 'undefined' && window.localStorage) {
-          // TON Connect SDK uses this key for storage
+          // Clear the shared storage key (used by UI library)
           const tonConnectStorageKey = 'ton-connect-storage';
-          localStorage.removeItem(tonConnectStorageKey);
-          console.log('[TON Connect] Cleared TON Connect shared storage');
+          if (localStorage.getItem(tonConnectStorageKey)) {
+            localStorage.removeItem(tonConnectStorageKey);
+            console.log('[TON Connect] Cleared shared storage key: ton-connect-storage');
+          }
+
+          // CRITICAL: Clear ALL session keys matching pattern: tonconnect_session_*
+          // These are the actual connection sessions that restoreConnection uses
+          const allKeys = Object.keys(localStorage);
+          const sessionKeys = allKeys.filter(key => 
+            key.startsWith('tonconnect_session_') || 
+            key.startsWith('ton-connect-session_') ||
+            key.toLowerCase().includes('tonconnect_session')
+          );
+          
+          sessionKeys.forEach(key => {
+            localStorage.removeItem(key);
+            console.log(`[TON Connect] Cleared session key: ${key}`);
+          });
+
+          if (sessionKeys.length > 0) {
+            console.log(`[TON Connect] Cleared ${sessionKeys.length} session key(s) before connection`);
+          }
         }
       } catch (e) {
-        console.warn('[TON Connect] Failed to clear shared storage:', e);
+        console.warn('[TON Connect] Failed to clear storage:', e);
       }
 
       // CRITICAL: Force disconnect SDK again to ensure TonConnectUI sees it
