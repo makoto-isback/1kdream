@@ -44,11 +44,11 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
       acc[bet.blockNumber] = { count: 0, totalAmount: 0 };
     }
     acc[bet.blockNumber].count++;
-    acc[bet.blockNumber].totalAmount += bet.amount;
+    acc[bet.blockNumber].totalAmount += Number(bet.amount);
     return acc;
   }, {} as Record<number, { count: number; totalAmount: number }>);
 
-  const totalBetsAmount = bets.reduce((sum, bet) => sum + bet.amount, 0);
+  const totalBetsAmount = bets.reduce((sum, bet) => sum + Number(bet.amount), 0);
   const uniqueNumbers = Object.keys(groupedBets).length;
 
   if (!user || !roundId) {
