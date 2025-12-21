@@ -147,6 +147,11 @@ export class TonService implements OnModuleInit {
       const address = Address.parse(this.walletAddress);
       const addressString = address.toString({ urlSafe: true, bounceable: false });
 
+      // Log the address being queried for debugging
+      console.log('[TON DEBUG] Querying address:', addressString);
+      console.log('[TON DEBUG] API URL:', this.tonApiUrl);
+      console.log('[TON DEBUG] Has API key:', !!this.tonApiKey);
+
       // Query TON Center API v3 for transactions - DO NOT use lt or since
       // v3 endpoint: GET /transactions
       const response = await axios.get(`${this.tonApiUrl}/transactions`, {
@@ -159,6 +164,11 @@ export class TonService implements OnModuleInit {
 
       const transactions = response.data?.result || [];
       console.log('[TON DEBUG] transactions fetched:', transactions.length);
+      
+      // Log raw response for debugging if no transactions found
+      if (transactions.length === 0) {
+        console.log('[TON DEBUG] Raw API response:', JSON.stringify(response.data).substring(0, 500));
+      }
       
       // Process each transaction and log details
       const processedTransactions = [];
