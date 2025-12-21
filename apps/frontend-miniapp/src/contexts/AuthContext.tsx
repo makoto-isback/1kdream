@@ -88,6 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem('token', token);
         const userData = response.data?.user;
         if (userData) {
+          console.log('[AUTH] User data from backend:', { id: userData.id, isAdmin: userData.isAdmin, username: userData.username });
           setUser(userData);
         }
         setAuthError(null);
