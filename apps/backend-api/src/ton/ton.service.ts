@@ -248,29 +248,46 @@ export class TonService implements OnModuleInit {
           comment = inMsg.msg_data.text.trim() || null;
         }
         
-        // Try decoding body if available
+        // Try decoding body if available (BOC encoded cell)
         if (!comment && inMsg.msg_data?.body) {
           try {
             const msgBody = inMsg.msg_data.body;
             
-            if (typeof msgBody === 'string') {
-              let bodyBytes: Buffer;
+            if (typeof msgBody === 'string' && msgBody.length > 0) {
+              // Try to parse as BOC (Cell) first - this is what frontend sends
               try {
-                bodyBytes = Buffer.from(msgBody, 'base64');
-              } catch {
-                try {
-                  bodyBytes = Buffer.from(msgBody, 'hex');
-                } catch {
-                  bodyBytes = Buffer.from(msgBody, 'utf-8');
+                const cell = Cell.fromBase64(msgBody);
+                const slice = cell.beginParse();
+                
+                // Text comments have opcode 0 (32 bits) followed by text
+                const opcode = slice.loadUint(32);
+                if (opcode === 0) {
+                  // Load remaining bits as string
+                  comment = slice.loadStringTail();
+                  if (comment) {
+                    console.log(`[TON DEBUG] Decoded BOC comment: ${comment}`);
+                  }
                 }
-              }
-              
-              // Skip first 4 bytes (op code) if present
-              if (bodyBytes.length > 4) {
-                const commentBytes = bodyBytes.slice(4);
-                comment = commentBytes.toString('utf-8').trim() || null;
-              } else if (bodyBytes.length > 0) {
-                comment = bodyBytes.toString('utf-8').trim() || null;
+              } catch (bocError) {
+                // Not a valid BOC, try raw decoding
+                let bodyBytes: Buffer;
+                try {
+                  bodyBytes = Buffer.from(msgBody, 'base64');
+                } catch {
+                  try {
+                    bodyBytes = Buffer.from(msgBody, 'hex');
+                  } catch {
+                    bodyBytes = Buffer.from(msgBody, 'utf-8');
+                  }
+                }
+                
+                // Skip first 4 bytes (op code) if present
+                if (bodyBytes.length > 4) {
+                  const commentBytes = bodyBytes.slice(4);
+                  comment = commentBytes.toString('utf-8').trim() || null;
+                } else if (bodyBytes.length > 0) {
+                  comment = bodyBytes.toString('utf-8').trim() || null;
+                }
               }
             }
             // If body is not a string, skip comment parsing (comment remains null)
