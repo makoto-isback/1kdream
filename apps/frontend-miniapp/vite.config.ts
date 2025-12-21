@@ -7,7 +7,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Alias buffer package for browser compatibility
+      buffer: 'buffer',
     },
+  },
+  optimizeDeps: {
+    // Include buffer in optimization for @ton/core compatibility
+    include: ['buffer'],
   },
   server: {
     host: true,
