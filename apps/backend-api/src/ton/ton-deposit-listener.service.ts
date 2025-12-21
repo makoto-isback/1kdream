@@ -120,6 +120,11 @@ export class TonDepositListenerService implements OnModuleInit {
         const existing = await this.depositsService.findByTxHash(txHash);
         if (existing) {
           console.log(`[TON DEBUG] Deposit already exists for tx ${txHash}`);
+          
+          // Check if pending deposit needs confirmation
+          if (existing.status === DepositStatus.PENDING) {
+            await this.checkAndConfirmDeposit(existing, txHash);
+          }
           continue;
         }
         
