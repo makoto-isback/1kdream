@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards, Post } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards, Post, Query } from '@nestjs/common';
 import { LotteryService } from './lottery.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SystemService } from '../system/system.service';
@@ -35,6 +35,12 @@ export class LotteryController {
   @Get('winners-feed')
   async getWinnersFeed() {
     return this.lotteryService.getWinnersFeed();
+  }
+
+  @Get('recent-rounds')
+  async getRecentRounds(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 20;
+    return this.lotteryService.getRecentRounds(parsedLimit);
   }
 
   @Get('pool-info')

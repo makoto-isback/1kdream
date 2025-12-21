@@ -20,6 +20,7 @@ import { WinningHistoryBar, WinnerRound } from '../components/WinningHistoryBar'
 import { WinningPopup } from '../components/WinningPopup';
 import { LotteryRound, lotteryService, Winner } from '../services/lottery';
 import { UserRoundHistory } from '../components/UserRoundHistory';
+import { MyBetsThisRound } from '../components/MyBetsThisRound';
 import api from '../services/api';
 import { socketService, RoundCompletedEvent } from '../services/socket';
 
@@ -441,6 +442,14 @@ const LotteryPage: React.FC = () => {
                          userStake={userStake}
                          loading={dataLoading}
                        />
+                       
+                       {/* User's bets for this round */}
+                       <MyBetsThisRound
+                         language={language}
+                         roundId={activeRound?.id || null}
+                         refreshKey={historyRefreshKey}
+                       />
+                       
                        {user && (
                          <AutoBuyPlans 
                            language={language}

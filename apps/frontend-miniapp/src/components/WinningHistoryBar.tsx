@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { GlassCard } from './GlassCard';
 import { Language } from '../types/ui';
-import { lotteryService, Winner } from '../services/lottery';
+import { lotteryService, RecentRound } from '../services/lottery';
 
 interface Props {
   language: Language;
@@ -17,54 +17,49 @@ export type WinnerRound = {
 };
 
 export const WinningHistoryBar: React.FC<Props> = ({ language, limit = 10, refreshKey, recentWinners }) => {
-  const [winners, setWinners] = useState<Winner[]>([]);
+  const [recentRounds, setRecentRounds] = useState<RecentRound[]>([]);
 
-  // Only fetch from API if recentWinners prop is not provided (fallback)
+  // Fetch ALL recent rounds (not just winners)
   useEffect(() => {
-    if (!recentWinners || recentWinners.length === 0) {
-      loadWinners();
-      const interval = setInterval(loadWinners, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [limit, refreshKey, recentWinners]);
+    loadRecentRounds();
+    const interval = setInterval(loadRecentRounds, 30000);
+    return () => clearInterval(interval);
+  }, [limit, refreshKey]);
 
-  const loadWinners = async () => {
+  const loadRecentRounds = async () => {
     try {
-      const data = await lotteryService.getWinnersFeed(limit * 2); // grab extra to aggregate per round
-      setWinners(data || []);
+      const data = await lotteryService.getRecentRounds(limit);
+      setRecentRounds(data || []);
     } catch (error) {
-      console.error('Error loading winners:', error);
-    } finally {
-      // no-op
+      console.error('Error loading recent rounds:', error);
     }
   };
 
   const rounds: WinnerRound[] = useMemo(() => {
-    // If recentWinners prop is provided, use it directly (from socket events)
+    // Merge socket updates with API data
+    // Socket events take priority for fresh data
+    const mergedMap = new Map<number, WinnerRound>();
+    
+    // First, add all API data
+    recentRounds.forEach((r) => {
+      mergedMap.set(r.roundNumber, {
+        roundNumber: r.roundNumber,
+        winningBlock: r.winningBlock,
+        winnersCount: r.winnersCount,
+      });
+    });
+    
+    // Then, overlay with socket data (if any)
     if (recentWinners && recentWinners.length > 0) {
-      return recentWinners.slice(0, limit);
+      recentWinners.forEach((r) => {
+        mergedMap.set(r.roundNumber, r);
+      });
     }
     
-    // Otherwise, aggregate from API winners data (fallback)
-    if (!winners || winners.length === 0) return [];
-    const map = new Map<number, WinnerRound>();
-    winners.forEach((w) => {
-      const existing = map.get(w.roundNumber);
-      if (existing) {
-        existing.winnersCount += 1;
-        if (!existing.winningBlock && w.block) existing.winningBlock = w.block;
-      } else {
-        map.set(w.roundNumber, {
-          roundNumber: w.roundNumber,
-          winningBlock: w.block,
-          winnersCount: 1,
-        });
-      }
-    });
-    return Array.from(map.values())
+    return Array.from(mergedMap.values())
       .sort((a, b) => b.roundNumber - a.roundNumber)
       .slice(0, limit);
-  }, [winners, limit, recentWinners]);
+  }, [recentRounds, limit, recentWinners]);
 
   const isEmpty = rounds.length === 0;
 

@@ -418,4 +418,39 @@ export class LotteryService {
     }
     return username.substring(0, 2) + '***' + username.substring(username.length - 1);
   }
+
+  /**
+   * Get recent completed rounds with winning numbers
+   * This returns ALL completed rounds, not just those with winners
+   */
+  async getRecentRounds(limit: number = 20) {
+    const completedRounds = await this.lotteryRoundRepository.find({
+      where: { status: LotteryRoundStatus.COMPLETED },
+      order: { drawnAt: 'DESC' },
+      take: limit,
+      relations: ['bets'],
+    });
+
+    return completedRounds.map(round => {
+      // Count winners on this block
+      const winnersCount = round.winningBlock
+        ? round.bets.filter(bet => bet.blockNumber === round.winningBlock && bet.isWinner).length
+        : 0;
+      
+      // Calculate total payout for winners
+      const totalPayout = round.bets
+        .filter(bet => bet.blockNumber === round.winningBlock && bet.isWinner)
+        .reduce((sum, bet) => sum + Number(bet.payout || 0), 0);
+
+      return {
+        roundNumber: round.roundNumber,
+        winningBlock: round.winningBlock,
+        winnersCount,
+        totalPool: Number(round.totalPool),
+        winnerPool: Number(round.winnerPool),
+        totalPayout,
+        drawnAt: round.drawnAt,
+      };
+    });
+  }
 }

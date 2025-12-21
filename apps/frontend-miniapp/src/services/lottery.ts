@@ -39,6 +39,16 @@ export interface Winner {
   drawnAt: string;
 }
 
+export interface RecentRound {
+  roundNumber: number;
+  winningBlock: number | null;
+  winnersCount: number;
+  totalPool: number;
+  winnerPool: number;
+  totalPayout: number;
+  drawnAt: string | null;
+}
+
 export const lotteryService = {
   async getActiveRound(): Promise<LotteryRound | null> {
     const response = await api.get('/lottery/active');
@@ -57,6 +67,11 @@ export const lotteryService = {
 
   async getWinnersFeed(limit = 20): Promise<Winner[]> {
     const response = await api.get('/lottery/winners-feed', { params: { limit } });
+    return response.data;
+  },
+
+  async getRecentRounds(limit = 20): Promise<RecentRound[]> {
+    const response = await api.get('/lottery/recent-rounds', { params: { limit } });
     return response.data;
   },
 };
