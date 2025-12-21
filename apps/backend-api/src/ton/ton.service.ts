@@ -152,22 +152,69 @@ export class TonService implements OnModuleInit {
       console.log('[TON DEBUG] API URL:', this.tonApiUrl);
       console.log('[TON DEBUG] Has API key:', !!this.tonApiKey);
 
-      // Query TON Center API v3 for transactions - DO NOT use lt or since
-      // v3 endpoint: GET /transactions
-      const response = await axios.get(`${this.tonApiUrl}/transactions`, {
-        params: {
-          address: addressString,
-          limit: 20,
-        },
-        headers: this.getTonApiHeaders(),
-      });
-
-      const transactions = response.data?.result || [];
-      console.log('[TON DEBUG] transactions fetched:', transactions.length);
+      // Determine API version from URL
+      const isV3 = this.tonApiUrl.includes('/v3') || this.tonApiUrl.endsWith('/api/v3');
+      const isV2 = this.tonApiUrl.includes('/v2') || this.tonApiUrl.endsWith('/api/v2');
       
-      // Log raw response for debugging if no transactions found
-      if (transactions.length === 0) {
-        console.log('[TON DEBUG] Raw API response:', JSON.stringify(response.data).substring(0, 500));
+      let transactions: any[] = [];
+      
+      if (isV3) {
+        // TON Center API v3: Use /messages endpoint with destination parameter
+        // This returns incoming messages (deposits) to our address
+        console.log('[TON DEBUG] Using API v3 /messages endpoint');
+        const response = await axios.get(`${this.tonApiUrl}/messages`, {
+          params: {
+            destination: addressString,
+            limit: 50,
+            direction: 'in', // Only incoming messages (deposits)
+          },
+          headers: this.getTonApiHeaders(),
+        });
+        
+        // v3 returns { messages: [...], address_book: {...} }
+        const messages = response.data?.messages || [];
+        console.log('[TON DEBUG] messages fetched (v3):', messages.length);
+        
+        if (messages.length === 0) {
+          console.log('[TON DEBUG] Raw v3 response:', JSON.stringify(response.data).substring(0, 500));
+        }
+        
+        // Convert v3 message format to our transaction format
+        transactions = messages.map((msg: any) => ({
+          hash: msg.in_msg_tx_hash || msg.hash,
+          in_msg: {
+            value: msg.value,
+            source: msg.source,
+            message: msg.message_content?.decoded?.comment || null,
+            msg_data: {
+              text: msg.message_content?.decoded?.comment || null,
+              body: msg.message_content?.body || null,
+            },
+          },
+          utime: parseInt(msg.created_at) || 0,
+        }));
+      } else {
+        // TON Center API v2: Use /getTransactions endpoint
+        // Construct v2 URL properly
+        const v2BaseUrl = this.tonApiUrl.replace('/v3', '/v2').replace(/\/api\/v3$/, '/api/v2');
+        console.log('[TON DEBUG] Using API v2 /getTransactions endpoint');
+        console.log('[TON DEBUG] v2 URL:', `${v2BaseUrl}/getTransactions`);
+        
+        const response = await axios.get(`${v2BaseUrl}/getTransactions`, {
+          params: {
+            address: addressString,
+            limit: 20,
+          },
+          headers: this.getTonApiHeaders(),
+        });
+        
+        // v2 returns { ok: true, result: [...] }
+        transactions = response.data?.result || [];
+        console.log('[TON DEBUG] transactions fetched (v2):', transactions.length);
+        
+        if (transactions.length === 0) {
+          console.log('[TON DEBUG] Raw v2 response:', JSON.stringify(response.data).substring(0, 500));
+        }
       }
       
       // Process each transaction and log details
