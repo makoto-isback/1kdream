@@ -125,6 +125,13 @@ export class AdminController {
     return this.adminService.createLotteryRound(req.user.id);
   }
 
+  @Post('lottery/trigger-draw')
+  async triggerLotteryDraw(@Request() req) {
+    // AdminGuard already verified admin access
+    // This will manually trigger the lottery draw check and create a new round if needed
+    return this.adminService.triggerLotteryDraw(req.user.id);
+  }
+
   // ========== USDT DEPOSITS & WITHDRAWALS ==========
 
   @Get('deposits')

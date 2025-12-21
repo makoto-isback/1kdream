@@ -14,12 +14,12 @@ export class HourlyDrawJob {
   // Prod: hourly. Dev or short duration (<=1 min): check every 10s.
   @Cron(process.env.NODE_ENV === 'development' || (process.env.ROUND_DURATION_MINUTES && parseInt(process.env.ROUND_DURATION_MINUTES, 10) <= 1) ? '*/10 * * * * *' : '0 * * * *')
   async handleHourlyDraw() {
-    this.logger.log('Running lottery draw check...');
+    this.logger.log('🎲 [HourlyDrawJob] Running lottery draw check...');
     try {
       await this.lotteryService.runLottery();
-      this.logger.log('Lottery draw check completed successfully');
+      this.logger.log('🎲 [HourlyDrawJob] Lottery draw check completed successfully');
     } catch (error) {
-      this.logger.error('Error running lottery draw:', error);
+      this.logger.error('🎲 [HourlyDrawJob] Error running lottery draw:', error.message, error.stack);
     }
   }
 }

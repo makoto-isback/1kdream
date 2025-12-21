@@ -238,6 +238,43 @@ export class AdminService {
   }
 
   /**
+   * Manually trigger lottery draw check and create new round if needed
+   */
+  async triggerLotteryDraw(adminId: string) {
+    this.logger.log(`[ADMIN ACTION] Admin ${adminId} manually triggering lottery draw`);
+    
+    try {
+      // Run the lottery check (will draw winner if time has passed and create new round)
+      await this.lotteryService.runLottery();
+      
+      // Get the current active round to return status
+      const activeRound = await this.lotteryService.getActiveRound();
+      const latestRound = await this.lotteryService.getLatestRound();
+      
+      this.logger.log(`[ADMIN ACTION] Admin ${adminId} lottery draw triggered successfully`);
+      
+      return {
+        success: true,
+        message: 'Lottery draw check completed',
+        activeRound: activeRound ? {
+          roundNumber: activeRound.roundNumber,
+          status: activeRound.status,
+          drawTime: activeRound.drawTime,
+        } : null,
+        latestRound: latestRound ? {
+          roundNumber: latestRound.roundNumber,
+          status: latestRound.status,
+          winningBlock: latestRound.winningBlock,
+          drawnAt: latestRound.drawnAt,
+        } : null,
+      };
+    } catch (error) {
+      this.logger.error(`[ADMIN ACTION] Admin ${adminId} lottery draw trigger failed:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all USDT deposits with filters
    */
   async getUsdtDeposits(filters?: {

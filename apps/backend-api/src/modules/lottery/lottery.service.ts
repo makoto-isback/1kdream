@@ -125,19 +125,37 @@ export class LotteryService {
   }
 
   async runLottery(): Promise<void> {
+    console.log('🎲 [LotteryService] runLottery() called');
+    
     // Get active round
     const activeRound = await this.getActiveRound();
 
     if (!activeRound) {
-      // Create new round if none exists
-      await this.createNewRound(this.systemService);
+      // No active round - try to create one
+      console.log('🎲 [LotteryService] No active round found, attempting to create new round');
+      try {
+        const newRound = await this.createNewRound(this.systemService);
+        console.log('🎲 [LotteryService] ✅ Created new round:', newRound.roundNumber);
+      } catch (error) {
+        console.error('🎲 [LotteryService] ⚠️ Failed to create new round:', error.message);
+      }
       return;
     }
+
+    console.log('🎲 [LotteryService] Active round:', activeRound.roundNumber, 'drawTime:', activeRound.drawTime);
 
     // Check if it's time to draw
     const now = new Date();
     if (now >= activeRound.drawTime) {
-      await this.drawWinner(activeRound.id);
+      console.log('🎲 [LotteryService] Draw time has passed, executing drawWinner for round:', activeRound.roundNumber);
+      try {
+        await this.drawWinner(activeRound.id);
+        console.log('🎲 [LotteryService] ✅ drawWinner completed for round:', activeRound.roundNumber);
+      } catch (error) {
+        console.error('🎲 [LotteryService] ❌ drawWinner failed:', error.message);
+      }
+    } else {
+      console.log('🎲 [LotteryService] Draw time not reached yet, waiting...');
     }
   }
 
@@ -277,7 +295,14 @@ export class LotteryService {
       }
 
       // Create new round for next hour (outside transaction)
-      await this.createNewRound(this.systemService);
+      // If this fails, don't throw - the old round is already completed
+      try {
+        await this.createNewRound(this.systemService);
+        console.log('🎲 [LotteryService] ✅ New round created successfully');
+      } catch (createError) {
+        console.error('🎲 [LotteryService] ⚠️ Failed to create new round:', createError.message);
+        // Don't throw - the old round is completed, new round creation failure is non-critical
+      }
 
       return round;
     } catch (error) {
