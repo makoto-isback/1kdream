@@ -116,10 +116,11 @@ export class DepositsService {
     try {
       console.log(`[DEPOSIT CONFIRM] Looking up deposit ${depositId}`);
       
+      // NOTE: Don't use relations: ['user'] with pessimistic_write lock
+      // PostgreSQL doesn't allow FOR UPDATE with LEFT JOINs
       const deposit = await queryRunner.manager.findOne(Deposit, {
         where: { id: depositId },
         lock: { mode: 'pessimistic_write' },
-        relations: ['user'],
       });
 
       if (!deposit) {
