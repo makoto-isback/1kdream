@@ -13,10 +13,21 @@ export default function AdminPanel() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // DEBUG: Log user admin status
+  console.log('[AdminPanel] User check:', { 
+    hasUser: !!user, 
+    isAdmin: user?.isAdmin,
+    userId: user?.id,
+    username: user?.username
+  });
+
   // Only show if user is admin
   if (!user?.isAdmin) {
+    console.log('[AdminPanel] Not showing - user is not admin');
     return null;
   }
+  
+  console.log('[AdminPanel] Rendering admin panel for user:', user.username);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

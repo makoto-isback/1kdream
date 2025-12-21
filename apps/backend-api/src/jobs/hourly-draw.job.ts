@@ -1,25 +1,41 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { LotteryService } from '../modules/lottery/lottery.service';
 
 @Injectable()
-export class HourlyDrawJob {
+export class HourlyDrawJob implements OnModuleInit {
   private readonly logger = new Logger(HourlyDrawJob.name);
-  private readonly isShortDuration =
-    (process.env.ROUND_DURATION_MINUTES && !isNaN(parseInt(process.env.ROUND_DURATION_MINUTES, 10)) && parseInt(process.env.ROUND_DURATION_MINUTES, 10) <= 1) ||
-    process.env.NODE_ENV === 'development';
 
   constructor(private lotteryService: LotteryService) {}
 
-  // Prod: hourly. Dev or short duration (<=1 min): check every 10s.
-  @Cron(process.env.NODE_ENV === 'development' || (process.env.ROUND_DURATION_MINUTES && parseInt(process.env.ROUND_DURATION_MINUTES, 10) <= 1) ? '*/10 * * * * *' : '0 * * * *')
-  async handleHourlyDraw() {
-    this.logger.log('🎲 [HourlyDrawJob] Running lottery draw check...');
+  /**
+   * Run lottery check immediately on startup to handle any stuck rounds
+   */
+  async onModuleInit() {
+    this.logger.log('🎲 [HourlyDrawJob] Module initialized - running initial lottery check...');
     try {
       await this.lotteryService.runLottery();
-      this.logger.log('🎲 [HourlyDrawJob] Lottery draw check completed successfully');
+      this.logger.log('🎲 [HourlyDrawJob] Initial lottery check completed');
     } catch (error) {
-      this.logger.error('🎲 [HourlyDrawJob] Error running lottery draw:', error.message, error.stack);
+      this.logger.error('🎲 [HourlyDrawJob] Initial lottery check failed:', error.message);
+    }
+  }
+
+  /**
+   * Check for lottery draws EVERY MINUTE in production.
+   * In dev or short duration mode, check every 10 seconds.
+   * 
+   * This ensures that when a round's drawTime passes, the draw is executed
+   * within 1 minute (or 10 seconds in dev mode).
+   */
+  @Cron(process.env.NODE_ENV === 'development' || (process.env.ROUND_DURATION_MINUTES && parseInt(process.env.ROUND_DURATION_MINUTES, 10) <= 1) ? '*/10 * * * * *' : '* * * * *')
+  async handleLotteryDrawCheck() {
+    // Use debug level to avoid log spam (runs every minute)
+    this.logger.debug('🎲 [HourlyDrawJob] Running lottery draw check...');
+    try {
+      await this.lotteryService.runLottery();
+    } catch (error) {
+      this.logger.error('🎲 [HourlyDrawJob] Error running lottery draw:', error.message);
     }
   }
 }

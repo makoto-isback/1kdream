@@ -59,12 +59,24 @@ export class LotteryService {
     return round;
   }
 
-  async createNewRound(systemService?: any): Promise<LotteryRound> {
-    // Check if new rounds are paused
-    if (systemService) {
-      const newRoundsPaused = await systemService.isNewRoundsPaused();
-      if (newRoundsPaused) {
-        throw new Error('New rounds are currently paused');
+  async createNewRound(systemService?: any, forceCreate: boolean = false): Promise<LotteryRound> {
+    console.log('🎲 [LotteryService] createNewRound called, forceCreate:', forceCreate);
+    
+    // Check if new rounds are paused (skip check if forceCreate)
+    if (systemService && !forceCreate) {
+      try {
+        const newRoundsPaused = await systemService.isNewRoundsPaused();
+        if (newRoundsPaused) {
+          console.log('🎲 [LotteryService] ⚠️ New rounds are paused, cannot create new round');
+          throw new Error('New rounds are currently paused');
+        }
+      } catch (err) {
+        // If system service fails, log but continue (don't block round creation)
+        if (err.message !== 'New rounds are currently paused') {
+          console.warn('🎲 [LotteryService] ⚠️ SystemService check failed, continuing anyway:', err.message);
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -79,6 +91,9 @@ export class LotteryService {
     // Create new round using configured duration
     const drawTime = new Date(Date.now() + this.roundDurationMinutes * 60 * 1000);
 
+    console.log('🎲 [LotteryService] Creating round #' + roundNumber + ' with drawTime:', drawTime.toISOString());
+    console.log('🎲 [LotteryService] Round duration:', this.roundDurationMinutes, 'minutes');
+
     const round = this.lotteryRoundRepository.create({
       roundNumber,
       status: LotteryRoundStatus.ACTIVE,
@@ -89,7 +104,10 @@ export class LotteryService {
       totalBets: 0,
     });
 
-    return this.lotteryRoundRepository.save(round);
+    const savedRound = await this.lotteryRoundRepository.save(round);
+    console.log('🎲 [LotteryService] ✅ Round #' + savedRound.roundNumber + ' created successfully (ID:', savedRound.id + ')');
+    
+    return savedRound;
   }
 
   async addBetToPool(

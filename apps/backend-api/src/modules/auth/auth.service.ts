@@ -46,6 +46,16 @@ export class AuthService {
 
   async login(user: any) {
     const payload = { sub: user.id, telegramId: user.telegramId };
+    
+    // DEBUG: Log user object to verify isAdmin is included
+    console.log('[AUTH] Login user object:', {
+      id: user.id,
+      telegramId: user.telegramId,
+      username: user.username,
+      isAdmin: user.isAdmin,
+      isActivated: user.isActivated,
+    });
+    
     return {
       access_token: this.jwtService.sign(payload),
       user,
