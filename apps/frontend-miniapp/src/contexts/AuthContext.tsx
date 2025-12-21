@@ -53,8 +53,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             firstName: 'Local',
             lastName: 'Dev',
             username: 'localdev',
-            kyatBalance: '100000',
+            kyatBalance: 100000,
+            points: 0,
+            tonAddress: null,
             isAdmin: false,
+            isActivated: false,
+            activatedAt: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };

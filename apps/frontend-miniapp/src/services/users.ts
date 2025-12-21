@@ -9,6 +9,9 @@ export interface User {
   kyatBalance: number;
   points: number;
   tonAddress: string | null;
+  isAdmin: boolean;
+  isActivated: boolean;
+  activatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
