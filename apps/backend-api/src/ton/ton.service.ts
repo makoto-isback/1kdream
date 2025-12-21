@@ -185,6 +185,7 @@ export class TonService implements OnModuleInit {
           in_msg: {
             value: msg.value,
             source: msg.source,
+            destination: msg.destination, // Add destination for filtering
             message: msg.message_content?.decoded?.comment || null,
             msg_data: {
               text: msg.message_content?.decoded?.comment || null,
@@ -287,19 +288,32 @@ export class TonService implements OnModuleInit {
         console.log(`[TON DEBUG] tx hash=${txHash} value=${tonValue} comment=${comment}`);
         
         // Filter for incoming transfers (where our address is the destination)
+        // For v3 API, we already filtered by destination in the query, so all messages are to our address
+        // For v2 API, we need to check the destination
         const dest = inMsg.destination?.address || inMsg.destination;
-        if (dest) {
-          try {
-            const destAddress = Address.parse(dest);
-            if (destAddress.equals(address)) {
-              processedTransactions.push(tx);
+        if (isV3) {
+          // v3: All messages are already filtered to our address by the API query
+          // Just verify value > 0 (actual deposit, not zero-amount message)
+          if (tonValue > 0) {
+            processedTransactions.push(tx);
+            console.log(`[TON DEBUG] Added v3 transaction to processed list: ${txHash}`);
+          }
+        } else {
+          // v2: Need to check destination matches our address
+          if (dest) {
+            try {
+              const destAddress = Address.parse(dest);
+              if (destAddress.equals(address)) {
+                processedTransactions.push(tx);
+              }
+            } catch {
+              // Invalid address format, skip
             }
-          } catch {
-            // Invalid address format, skip
           }
         }
       }
 
+      console.log(`[TON DEBUG] Returning ${processedTransactions.length} processed transactions`);
       return processedTransactions;
     } catch (error) {
       if (error.response) {
