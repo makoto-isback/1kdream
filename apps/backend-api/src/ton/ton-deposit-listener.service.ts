@@ -237,17 +237,15 @@ export class TonDepositListenerService implements OnModuleInit {
           return; // Already committed and released
         }
       } else {
-        // No user ID in memo - create as pending_manual
+        // No user ID in memo - skip automatic processing
+        // User must contact support for manual credit via admin panel
         this.logger.log(
-          `[TON DEPOSIT] New TON deposit detected without user ID: ${tonAmount} TON (${usdtAmount} USDT) from ${senderAddress} (${txHash})`
+          `[TON DEPOSIT] Deposit without user ID - skipping: ${tonAmount} TON (${usdtAmount} USDT) from ${senderAddress} (${txHash})`
         );
-
-        const deposit = await this.depositsService.createPendingManualDeposit(
-          senderAddress || '',
-          usdtAmount,
-          txHash,
+        this.logger.log(
+          `[TON DEPOSIT] User must contact support for manual credit. Tx: ${txHash}`
         );
-        this.logger.log(`[TON DEPOSIT] Created pending_manual deposit: ${deposit.id}`);
+        // Don't create deposit record - admin will use manual-adjust endpoint
       }
 
       await queryRunner.commitTransaction();
