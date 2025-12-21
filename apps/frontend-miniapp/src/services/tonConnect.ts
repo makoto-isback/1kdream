@@ -640,7 +640,14 @@ class TonConnectService {
       
       // Convert Cell to BOC (Bag of Cells) and then to base64
       const boc = cell.toBoc();
-      const base64 = Buffer.from(boc).toString('base64');
+      
+      // Convert Uint8Array to base64 (browser-compatible, no Buffer)
+      // btoa works with strings, so we convert bytes to binary string first
+      let binaryString = '';
+      for (let i = 0; i < boc.length; i++) {
+        binaryString += String.fromCharCode(boc[i]);
+      }
+      const base64 = btoa(binaryString);
       
       console.log('[TON Connect] Encoded text comment:', text, '-> base64 length:', base64.length);
       return base64;
