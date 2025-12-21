@@ -322,8 +322,12 @@ export class TonDepositListenerService implements OnModuleInit {
           `[TON DEPOSIT] Deposit ${txHash} has ${confirmations}/${this.requiredConfirmations} confirmations. Waiting...`
         );
       }
-    } catch (error) {
-      this.logger.error(`[TON DEPOSIT] Error checking confirmations for ${txHash}:`, error);
+    } catch (error: any) {
+      // Log full error details for debugging
+      this.logger.error(`[TON DEPOSIT] Error checking/confirming deposit ${txHash}: ${error?.message || error}`);
+      if (error?.stack) {
+        this.logger.error(`[TON DEPOSIT] Stack trace: ${error.stack}`);
+      }
     }
   }
 }

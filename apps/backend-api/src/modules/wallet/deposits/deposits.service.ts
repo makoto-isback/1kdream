@@ -114,6 +114,8 @@ export class DepositsService {
     await queryRunner.startTransaction();
 
     try {
+      console.log(`[DEPOSIT CONFIRM] Looking up deposit ${depositId}`);
+      
       const deposit = await queryRunner.manager.findOne(Deposit, {
         where: { id: depositId },
         lock: { mode: 'pessimistic_write' },
@@ -121,14 +123,16 @@ export class DepositsService {
       });
 
       if (!deposit) {
+        console.log(`[DEPOSIT CONFIRM] Deposit ${depositId} not found`);
         throw new NotFoundException('Deposit not found');
       }
+
+      console.log(`[DEPOSIT CONFIRM] Found deposit: status=${deposit.status}, userId=${deposit.userId}, kyatAmount=${deposit.kyatAmount}`);
 
       // Prevent double confirmation - return early if already confirmed
       if (deposit.status === DepositStatus.CONFIRMED) {
         await queryRunner.commitTransaction();
-        // Log idempotent call
-        console.log(`[ADMIN ACTION] Admin ${adminId} attempted to confirm already-confirmed deposit ${depositId} (idempotent)`);
+        console.log(`[DEPOSIT CONFIRM] Already confirmed (idempotent)`);
         return deposit;
       }
 
@@ -148,20 +152,27 @@ export class DepositsService {
 
       // Validate user exists before crediting
       if (!deposit.userId) {
+        console.log(`[DEPOSIT CONFIRM] No userId on deposit`);
         throw new BadRequestException('Deposit has no associated user. Provide userId parameter.');
       }
 
       // Add KYAT to user balance (with lock)
+      console.log(`[DEPOSIT CONFIRM] Looking up user ${deposit.userId}`);
       const user = await queryRunner.manager.findOne(User, {
         where: { id: deposit.userId },
         lock: { mode: 'pessimistic_write' },
       });
 
       if (!user) {
+        console.log(`[DEPOSIT CONFIRM] User ${deposit.userId} not found`);
         throw new NotFoundException(`User ${deposit.userId} not found`);
       }
 
-      user.kyatBalance = Number(user.kyatBalance) + deposit.kyatAmount;
+      const kyatToAdd = Number(deposit.kyatAmount);
+      const oldBalance = Number(user.kyatBalance);
+      user.kyatBalance = oldBalance + kyatToAdd;
+      console.log(`[DEPOSIT CONFIRM] Crediting ${kyatToAdd} KYAT to user. Old: ${oldBalance}, New: ${user.kyatBalance}`);
+      
       await queryRunner.manager.save(user);
       
       await queryRunner.manager.save(deposit);
