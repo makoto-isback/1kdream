@@ -1,5 +1,6 @@
 import { TonConnectUI } from '@tonconnect/ui';
-import { beginCell } from '@ton/core';
+// NOTE: @ton/core is NOT imported here - it's lazy-loaded to prevent Buffer crash
+// The import happens only when encodeTextComment() is called (after app initialization)
 
 export interface WalletInfo {
   address: string;
@@ -28,6 +29,23 @@ class TonConnectService {
   private readonly STORAGE_KEY = 'ton_wallet_info';
   private initialized: boolean = false;
   private statusChangeCallbacks: StatusChangeCallback[] = [];
+  
+  // Cache for lazy-loaded beginCell (prevents @ton/core from loading before Buffer polyfill)
+  private _beginCellCache: any = null;
+  
+  /**
+   * Lazy-load beginCell from @ton/core only when needed.
+   * This prevents @ton/core from loading at module import time (before Buffer polyfill).
+   */
+  private async getBeginCell() {
+    if (!this._beginCellCache) {
+      // Dynamic import - only loads when this function is called
+      // By this time, main.tsx has already set up the Buffer polyfill
+      const tonCore = await import('@ton/core');
+      this._beginCellCache = tonCore.beginCell;
+    }
+    return this._beginCellCache;
+  }
 
   /**
    * Lazy initialization - ONLY called when user explicitly clicks connect().
@@ -594,11 +612,11 @@ class TonConnectService {
   }
 
   // Helper to create TON transfer transaction with optional comment
-  createTonTransferTransaction(
+  async createTonTransferTransaction(
     toAddress: string,
     amount: string = '1', // Amount in TON (will be converted to nanoTON)
     comment?: string, // Optional comment/memo
-  ): any {
+  ): Promise<any> {
     // Convert TON to nanoTON (1 TON = 10^9 nanoTON)
     const amountNano = (parseFloat(amount) * 1e9).toString();
     
@@ -611,13 +629,12 @@ class TonConnectService {
     // TON Connect requires payload to be base64-encoded BOC
     // For text comments, we encode: opcode 0x00000000 + UTF-8 text
     if (comment) {
-      const payload = this.encodeTextComment(comment);
+      const payload = await this.encodeTextComment(comment);
       // Only add payload if encoding succeeded (non-empty)
       if (payload) {
         transaction.payload = payload;
       } else {
-        // Log that comment won't be included (encoding not implemented)
-        console.warn('[TON Connect] Comment not included in transaction (encoding not implemented)');
+        console.warn('[TON Connect] Comment not included in transaction (encoding failed)');
       }
     }
     
@@ -626,11 +643,15 @@ class TonConnectService {
 
   /**
    * Encode a text comment as a base64 BOC payload for TON Connect.
-   * Uses @ton/core for proper Cell/BOC encoding.
+   * Uses @ton/core for proper Cell/BOC encoding (lazy-loaded).
    * Format: 32-bit opcode (0x00000000 for text) + UTF-8 encoded text
    */
-  private encodeTextComment(text: string): string {
+  private async encodeTextComment(text: string): Promise<string> {
     try {
+      // Lazy-load beginCell - only loads when this function is called
+      // This ensures Buffer polyfill is already set up
+      const beginCell = await this.getBeginCell();
+      
       // Use @ton/core to properly encode the text comment as a Cell
       // Text comments in TON have opcode 0 followed by the text
       const cell = beginCell()

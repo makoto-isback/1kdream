@@ -155,7 +155,7 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
       const memo = `withdraw:${user.id}:${kyatAmount}:${destinationAddress.trim()}`;
 
       // Send 0.1 TON to treasury (request fee, NOT the withdraw amount)
-      const transaction = createTonTransferTransaction(TON_TREASURY_ADDRESS, '0.1', memo);
+      const transaction = await createTonTransferTransaction(TON_TREASURY_ADDRESS, '0.1', memo);
 
       console.log('[WITHDRAW] sending request tx');
 
@@ -233,7 +233,7 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
       if (asset === 'TON') {
         // Create TON transfer with comment/memo
         // sendAmount is now the correct TON amount (converted from KYAT)
-        transaction = createTonTransferTransaction(TON_TREASURY_ADDRESS, sendAmount, memo);
+        transaction = await createTonTransferTransaction(TON_TREASURY_ADDRESS, sendAmount, memo);
       } else {
         // Create USDT jetton transfer
         transaction = createUsdtTransferTransaction(USDT_TREASURY_ADDRESS, sendAmount);
