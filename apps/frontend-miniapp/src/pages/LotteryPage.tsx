@@ -436,6 +436,9 @@ const LotteryPage: React.FC = () => {
                 {/* Right Column: Info & Buy */}
                 <div className="lg:w-96 flex-shrink-0">
                    <div className="lg:sticky lg:top-8 space-y-4">
+                       {/* Admin Panel - Top of right column for visibility */}
+                       <AdminPanel />
+                       
                        <RoundPanel 
                          language={language} 
                          round={activeRound}
@@ -491,11 +494,6 @@ const LotteryPage: React.FC = () => {
               />
               <div className="mt-4">
                 <UserRoundHistory language={language} refreshKey={historyRefreshKey} />
-              </div>
-              
-              {/* Admin Panel - only visible to admins */}
-              <div className="mt-4">
-                <AdminPanel />
               </div>
             </div>
         </div>

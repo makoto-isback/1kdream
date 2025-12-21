@@ -1,10 +1,11 @@
 .admin-panel {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 12px;
+  background: linear-gradient(145deg, #1a1a2e, #16162a);
+  border: 2px solid #ff6b6b;
+  border-radius: 16px;
   padding: 20px;
-  margin: 20px;
+  margin: 20px auto;
   max-width: 500px;
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
 }
 
 .admin-panel h2 {
