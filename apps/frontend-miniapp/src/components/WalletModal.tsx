@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GlassCard } from './GlassCard';
 import { Language, WalletTab } from '../types/ui';
 import { TRANSLATIONS } from '../constants/translations';
@@ -6,6 +6,32 @@ import { Icons } from './Icons';
 import { User } from '../services/users';
 import { useWallet } from '../contexts/WalletContext';
 import { TON_TREASURY_ADDRESS, USDT_TREASURY_ADDRESS } from '../constants/treasury';
+
+// Exchange rate constant
+const KYAT_PER_USDT = 5000;
+
+// Fetch TON price from CoinGecko API
+async function fetchTonPriceUsd(): Promise<number> {
+  try {
+    const response = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd'
+    );
+    if (!response.ok) {
+      throw new Error('Failed to fetch TON price');
+    }
+    const data = await response.json();
+    const price = data['the-open-network']?.usd;
+    if (typeof price !== 'number' || price <= 0) {
+      throw new Error('Invalid TON price received');
+    }
+    console.log('[TON Price] Fetched:', price, 'USD');
+    return price;
+  } catch (error) {
+    console.error('[TON Price] Failed to fetch:', error);
+    // Fallback to a reasonable default (will be updated when API is available)
+    return 5.5; // ~$5.50 as fallback
+  }
+}
 
 interface Props {
   language: Language;
@@ -48,6 +74,20 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
   const [isSendingWithdrawTx, setIsSendingWithdrawTx] = useState(false);
   const [withdrawTxError, setWithdrawTxError] = useState<string | null>(null);
   const [withdrawTxSuccess, setWithdrawTxSuccess] = useState(false);
+
+  // TON price state for deposit calculations
+  const [tonPriceUsd, setTonPriceUsd] = useState<number>(5.5); // Default fallback
+  const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
+  // Fetch TON price on mount and when deposit tab is active
+  useEffect(() => {
+    if (isOpen && activeTab === WalletTab.DEPOSIT) {
+      setIsFetchingPrice(true);
+      fetchTonPriceUsd()
+        .then(price => setTonPriceUsd(price))
+        .finally(() => setIsFetchingPrice(false));
+    }
+  }, [isOpen, activeTab]);
 
   // Contact Support helper
   const handleContactSupport = () => {
@@ -149,13 +189,34 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
       return;
     }
 
-    const amount = asset === 'TON' 
-      ? depositAmount 
-      : depositUsdtAmount;
-
-    if (!amount || parseFloat(amount) <= 0) {
-      setTxError(language === 'my' ? 'ပမာဏ ထည့်သွင်းပါ' : 'Please enter amount');
-      return;
+    // For TON deposits: convert KYAT -> USDT -> TON
+    // For USDT deposits: use USDT amount directly
+    let sendAmount: string;
+    
+    if (asset === 'TON') {
+      const kyatAmount = parseFloat(depositAmount);
+      if (!depositAmount || isNaN(kyatAmount) || kyatAmount <= 0) {
+        setTxError(language === 'my' ? 'ပမာဏ ထည့်သွင်းပါ' : 'Please enter amount');
+        return;
+      }
+      // Convert KYAT -> USDT -> TON
+      const usdtAmount = kyatAmount / KYAT_PER_USDT;
+      const tonAmount = usdtAmount / tonPriceUsd;
+      // Round to 9 decimals (nanoTON precision)
+      sendAmount = tonAmount.toFixed(9);
+      console.log('[DEPOSIT] Amount conversion:', { 
+        kyatAmount, 
+        usdtAmount, 
+        tonPriceUsd, 
+        tonAmount: sendAmount 
+      });
+    } else {
+      // USDT deposit - use USDT amount directly
+      if (!depositUsdtAmount || parseFloat(depositUsdtAmount) <= 0) {
+        setTxError(language === 'my' ? 'ပမာဏ ထည့်သွင်းပါ' : 'Please enter amount');
+        return;
+      }
+      sendAmount = depositUsdtAmount;
     }
 
     try {
@@ -164,17 +225,18 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
       setTxSuccess(false);
       setSelectedAsset(asset);
 
-      console.log('[DEPOSIT] sending tx', { asset, amount, userId: user.id });
+      console.log('[DEPOSIT] sending tx', { asset, sendAmount, userId: user.id });
 
       let transaction;
       const memo = `deposit:${user.id}`;
 
       if (asset === 'TON') {
         // Create TON transfer with comment/memo
-        transaction = createTonTransferTransaction(TON_TREASURY_ADDRESS, amount, memo);
+        // sendAmount is now the correct TON amount (converted from KYAT)
+        transaction = createTonTransferTransaction(TON_TREASURY_ADDRESS, sendAmount, memo);
       } else {
         // Create USDT jetton transfer
-        transaction = createUsdtTransferTransaction(USDT_TREASURY_ADDRESS, amount);
+        transaction = createUsdtTransferTransaction(USDT_TREASURY_ADDRESS, sendAmount);
         // Note: USDT jetton transfers may need memo in payload - backend will handle verification
       }
 
@@ -278,10 +340,14 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                                 disabled={isSendingTx}
                                 className="w-full bg-ios-gray4 border border-transparent focus:border-ios-blue/50 rounded-xl px-4 py-3 text-white placeholder-ios-label-tertiary focus:outline-none focus:ring-1 focus:ring-ios-blue font-mono text-lg transition-all disabled:opacity-50"
                             />
-                            {depositAmount && (
-                                <p className="text-[12px] text-ios-label-secondary mt-2">
-                                    = {depositUsdtAmount} USDT
-                                </p>
+                            {depositAmount && parseFloat(depositAmount) > 0 && (
+                                <div className="text-[12px] text-ios-label-secondary mt-2 space-y-1">
+                                    <p>= {depositUsdtAmount} USDT</p>
+                                    <p className="text-ios-blue">
+                                        ≈ {(parseFloat(depositAmount) / KYAT_PER_USDT / tonPriceUsd).toFixed(6)} TON
+                                        {isFetchingPrice && ' (loading...)'}
+                                    </p>
+                                </div>
                             )}
                         </div>
                         <div>
@@ -304,11 +370,14 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                                 </p>
                             )}
                         </div>
-                        <div className="pt-2 border-t border-white/5">
+                        <div className="pt-2 border-t border-white/5 space-y-1">
                             <p className="text-[10px] text-ios-label-secondary text-center">
                                 {language === 'my' 
                                   ? 'ပမာဏ ထည့်သွင်းပြီး wallet ချိတ်ဆက်ပါ' 
                                   : 'Enter amount and connect wallet'}
+                            </p>
+                            <p className="text-[10px] text-ios-label-tertiary text-center">
+                                1 TON ≈ ${tonPriceUsd.toFixed(2)} USD
                             </p>
                         </div>
                     </div>
@@ -332,10 +401,12 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                             {depositAmount && parseFloat(depositAmount) > 0 && (
                                 <button 
                                     onClick={() => handleSendDeposit('TON')}
-                                    disabled={isSendingTx}
+                                    disabled={isSendingTx || isFetchingPrice}
                                     className="w-full py-3.5 bg-ios-blue text-white font-semibold rounded-xl hover:bg-ios-blue/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {isSendingTx && selectedAsset === 'TON' ? TRANSLATIONS.loading[language] : (language === 'my' ? 'TON ပို့ရန်' : 'Send TON')}
+                                    {isSendingTx && selectedAsset === 'TON' 
+                                      ? TRANSLATIONS.loading[language] 
+                                      : `${language === 'my' ? 'TON ပို့ရန်' : 'Send'} ${(parseFloat(depositAmount) / KYAT_PER_USDT / tonPriceUsd).toFixed(6)} TON`}
                                 </button>
                             )}
                             {depositUsdtAmount && parseFloat(depositUsdtAmount) > 0 && (
