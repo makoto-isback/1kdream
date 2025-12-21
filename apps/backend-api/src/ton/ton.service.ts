@@ -490,6 +490,45 @@ export class TonService implements OnModuleInit {
     }
   }
 
+  // Cache for TON/USD price to avoid hitting CoinGecko too often
+  private tonUsdPriceCache: { price: number; timestamp: number } | null = null;
+  private readonly PRICE_CACHE_TTL_MS = 60000; // 1 minute cache
+
+  /**
+   * Fetch TON/USD price from CoinGecko
+   * Returns cached value if available and fresh
+   */
+  async getTonUsdPrice(): Promise<number> {
+    // Check cache first
+    if (this.tonUsdPriceCache) {
+      const age = Date.now() - this.tonUsdPriceCache.timestamp;
+      if (age < this.PRICE_CACHE_TTL_MS) {
+        return this.tonUsdPriceCache.price;
+      }
+    }
+
+    try {
+      const response = await axios.get(
+        'https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd',
+        { timeout: 10000 }
+      );
+
+      const price = response.data?.['the-open-network']?.usd;
+      
+      if (typeof price === 'number' && price > 0) {
+        this.tonUsdPriceCache = { price, timestamp: Date.now() };
+        this.logger.debug(`[TON PRICE] Fetched TON/USD price: $${price}`);
+        return price;
+      }
+
+      this.logger.warn('[TON PRICE] Invalid price data from CoinGecko, using fallback');
+      return this.tonUsdPriceCache?.price || 7.0; // Fallback to cached or default
+    } catch (error) {
+      this.logger.error('[TON PRICE] Error fetching TON/USD price:', error);
+      return this.tonUsdPriceCache?.price || 7.0; // Fallback to cached or default
+    }
+  }
+
   /**
    * Check for new USDT Jetton transfers to wallet address
    * USDT on TON uses Jetton standard

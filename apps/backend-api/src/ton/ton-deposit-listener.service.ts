@@ -197,10 +197,14 @@ export class TonDepositListenerService implements OnModuleInit {
         }
       }
 
-      // Convert TON to USDT (1 TON ≈ 1 USDT, but we'll use actual rate if needed)
-      // For now, assuming 1 TON = 1 USDT
-      const usdtAmount = tonAmount;
+      // Convert TON to USDT using live price from CoinGecko
+      const tonUsdPrice = await this.tonService.getTonUsdPrice();
+      const usdtAmount = tonAmount * tonUsdPrice;
       const kyatAmount = usdtAmount * 5000; // 1 USDT = 5000 KYAT
+      
+      this.logger.debug(
+        `[TON DEPOSIT] Conversion: ${tonAmount} TON × $${tonUsdPrice} = $${usdtAmount.toFixed(4)} = ${kyatAmount.toFixed(2)} KYAT`
+      );
 
       if (userId) {
         // User ID found in memo - create deposit with user
