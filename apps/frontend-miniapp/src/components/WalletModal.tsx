@@ -6,6 +6,7 @@ import { Icons } from './Icons';
 import { User } from '../services/users';
 import { useWallet } from '../contexts/WalletContext';
 import { TON_TREASURY_ADDRESS, USDT_TREASURY_ADDRESS } from '../constants/treasury';
+import { walletService } from '../services/wallet';
 
 // Exchange rate constant
 const KYAT_PER_USDT = 5000;
@@ -43,7 +44,8 @@ interface Props {
 }
 
 export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balance, user, onRefresh }) => {
-  console.log('[WALLET MODAL] support-assisted mode active');
+  // Debug: log user state on every render
+  console.log('[WALLET MODAL] User state:', { hasUser: !!user, userId: user?.id, balance });
   
   // Wallet context
   const {
@@ -113,7 +115,7 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
     }
   };
 
-  // Handle withdraw request
+  // Handle withdraw request - calls API directly (no TON transaction needed)
   const handleRequestWithdraw = async () => {
     if (!user?.id) {
       setWithdrawTxError(language === 'my' ? 'User ID မရှိပါ' : 'User ID not found');
@@ -151,18 +153,15 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
 
       console.log('[WITHDRAW] request started', { userId: user.id, kyatAmount, destinationAddress });
 
-      // Create memo: withdraw:<userId>:<kyatAmount>:<destinationAddress>
-      const memo = `withdraw:${user.id}:${kyatAmount}:${destinationAddress.trim()}`;
+      // Call API to create withdrawal request
+      // No TON transaction needed - balance is deducted immediately
+      // Funds will be sent after 1 hour delay
+      await walletService.createWithdrawalRequest({
+        kyatAmount,
+        tonAddress: destinationAddress.trim(),
+      });
 
-      // Send 0.1 TON to treasury (request fee, NOT the withdraw amount)
-      const transaction = await createTonTransferTransaction(TON_TREASURY_ADDRESS, '0.1', memo);
-
-      console.log('[WITHDRAW] sending request tx');
-
-      // Sign and send transaction
-      await signTransaction(transaction);
-
-      console.log('[WITHDRAW] request submitted');
+      console.log('[WITHDRAW] request submitted via API');
       setWithdrawTxSuccess(true);
       setWithdrawTxError(null);
       
@@ -184,8 +183,12 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
 
   // Handle deposit transaction
   const handleSendDeposit = async (asset: 'TON' | 'USDT') => {
+    // Debug: log user object to diagnose "User ID not found" issue
+    console.log('[DEPOSIT] User object:', user, 'ID:', user?.id);
+    
     if (!user?.id) {
-      setTxError(language === 'my' ? 'User ID မရှိပါ' : 'User ID not found');
+      console.error('[DEPOSIT] User ID missing. Full user object:', JSON.stringify(user));
+      setTxError(language === 'my' ? 'User ID မရှိပါ - ပြန်လည် Login ဝင်ပါ' : 'User ID not found - please re-login');
       return;
     }
 
