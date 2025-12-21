@@ -224,6 +224,17 @@ export class TonDepositListenerService implements OnModuleInit {
             kyatAmount,
             txHash,
           );
+          
+          // Commit the deposit creation first
+          await queryRunner.commitTransaction();
+          await queryRunner.release();
+          
+          // Check confirmations immediately (transaction might already have enough confirmations)
+          const savedDeposit = await this.depositsService.findByTxHash(txHash);
+          if (savedDeposit && savedDeposit.status === DepositStatus.PENDING) {
+            await this.checkAndConfirmDeposit(savedDeposit, txHash);
+          }
+          return; // Already committed and released
         }
       } else {
         // No user ID in memo - create as pending_manual
