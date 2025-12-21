@@ -17,9 +17,22 @@
   margin-bottom: 0;
 }
 
+.wallet-item .label-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
 .wallet-item .label {
   font-size: 14px;
   color: #999;
+}
+
+.wallet-item .exchange-rate {
+  font-size: 10px;
+  color: #666;
+  font-weight: 400;
 }
 
 .wallet-item .value {
