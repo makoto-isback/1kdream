@@ -123,7 +123,9 @@ export class TonDepositListenerService implements OnModuleInit {
           
           // Check if pending deposit needs confirmation
           if (existing.status === DepositStatus.PENDING) {
-            await this.checkAndConfirmDeposit(existing, txHash);
+            // Pass transaction timestamp for time-based confirmations
+            const utime = tx.utime || 0;
+            await this.checkAndConfirmDeposit(existing, txHash, utime);
           }
           continue;
         }
@@ -167,7 +169,8 @@ export class TonDepositListenerService implements OnModuleInit {
         
         // Check if it needs confirmation
         if (existing.status === DepositStatus.PENDING) {
-          await this.checkAndConfirmDeposit(existing, txHash);
+          const utime = transaction.utime || 0;
+          await this.checkAndConfirmDeposit(existing, txHash, utime);
         }
         
         await queryRunner.commitTransaction();
@@ -237,7 +240,8 @@ export class TonDepositListenerService implements OnModuleInit {
           // Check confirmations immediately (transaction might already have enough confirmations)
           const savedDeposit = await this.depositsService.findByTxHash(txHash);
           if (savedDeposit && savedDeposit.status === DepositStatus.PENDING) {
-            await this.checkAndConfirmDeposit(savedDeposit, txHash);
+            const utime = transaction.utime || 0;
+            await this.checkAndConfirmDeposit(savedDeposit, txHash, utime);
           }
           return; // Already committed and released
         }
@@ -288,10 +292,11 @@ export class TonDepositListenerService implements OnModuleInit {
 
   /**
    * Check and confirm deposit after required confirmations
+   * @param utime Transaction Unix timestamp for time-based confirmations
    */
-  private async checkAndConfirmDeposit(deposit: Deposit, txHash: string) {
+  private async checkAndConfirmDeposit(deposit: Deposit, txHash: string, utime?: number) {
     try {
-      const confirmations = await this.tonService.getTransactionConfirmations(txHash);
+      const confirmations = await this.tonService.getTransactionConfirmations(txHash, utime);
       
       if (confirmations >= this.requiredConfirmations) {
         this.logger.log(
