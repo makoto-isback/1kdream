@@ -101,20 +101,17 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
         </div>
       </div>
       
-      {/* Display bought numbers */}
+      {/* Display bought numbers - just numbers, no amounts */}
       <div className="flex flex-wrap gap-2 mb-3">
         {Object.entries(groupedBets)
           .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
-          .map(([blockNum, data]) => (
+          .map(([blockNum]) => (
             <div
               key={blockNum}
-              className="px-3 py-2 rounded-lg bg-ios-green/10 border border-ios-green/30 text-center min-w-[60px]"
+              className="px-4 py-2 rounded-lg bg-ios-green/10 border border-ios-green/30 text-center"
             >
-              <div className="text-lg font-bold text-ios-green">
+              <div className="text-xl font-bold text-ios-green">
                 {blockNum.toString().padStart(2, '0')}
-              </div>
-              <div className="text-[10px] text-ios-label-secondary">
-                {data.totalAmount.toLocaleString()} K
               </div>
             </div>
           ))}

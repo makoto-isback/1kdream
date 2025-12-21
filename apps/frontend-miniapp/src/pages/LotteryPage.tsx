@@ -21,6 +21,7 @@ import { WinningPopup } from '../components/WinningPopup';
 import { LotteryRound, lotteryService, Winner } from '../services/lottery';
 import { UserRoundHistory } from '../components/UserRoundHistory';
 import { MyBetsThisRound } from '../components/MyBetsThisRound';
+import AdminPanel from '../components/AdminPanel';
 import api from '../services/api';
 import { socketService, RoundCompletedEvent } from '../services/socket';
 
@@ -490,6 +491,11 @@ const LotteryPage: React.FC = () => {
               />
               <div className="mt-4">
                 <UserRoundHistory language={language} refreshKey={historyRefreshKey} />
+              </div>
+              
+              {/* Admin Panel - only visible to admins */}
+              <div className="mt-4">
+                <AdminPanel />
               </div>
             </div>
         </div>
