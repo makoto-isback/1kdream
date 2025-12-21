@@ -169,7 +169,14 @@ export class DepositsService {
       }
 
       const kyatToAdd = Number(deposit.kyatAmount);
-      const oldBalance = Number(user.kyatBalance);
+      const oldBalance = Number(user.kyatBalance) || 0;
+      
+      // Validate kyatAmount is a valid positive number
+      if (isNaN(kyatToAdd) || kyatToAdd <= 0) {
+        console.log(`[DEPOSIT CONFIRM] Invalid kyatAmount: ${deposit.kyatAmount} (parsed: ${kyatToAdd})`);
+        throw new BadRequestException(`Invalid kyatAmount: ${deposit.kyatAmount}`);
+      }
+      
       user.kyatBalance = oldBalance + kyatToAdd;
       console.log(`[DEPOSIT CONFIRM] Crediting ${kyatToAdd} KYAT to user. Old: ${oldBalance}, New: ${user.kyatBalance}`);
       
