@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useTranslation } from '../hooks/useTranslation';
 import Countdown from '../components/Countdown';
 import Wallet from '../components/Wallet';
+import AdminPanel from '../components/AdminPanel';
 import '../styles/Home.css';
 
 interface LotteryRound {
@@ -46,6 +47,8 @@ export default function Home() {
         <h1 className="title">{t('home.title')}</h1>
 
         <Wallet kyatBalance={user.kyatBalance} points={user.points} />
+
+        <AdminPanel />
 
         {round && (
           <div className="round-card">
