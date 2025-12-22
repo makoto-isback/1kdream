@@ -77,6 +77,10 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
   const [isSendingWithdrawTx, setIsSendingWithdrawTx] = useState(false);
   const [withdrawTxError, setWithdrawTxError] = useState<string | null>(null);
   const [withdrawTxSuccess, setWithdrawTxSuccess] = useState(false);
+  
+  // Withdrawal status tracking
+  const [userWithdrawals, setUserWithdrawals] = useState<any[]>([]);
+  const [countdownTime, setCountdownTime] = useState<{ [key: string]: number }>({});
 
   // TON price state for deposit calculations
   const [tonPriceUsd, setTonPriceUsd] = useState<number>(5.5); // Default fallback
@@ -91,6 +95,98 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
         .finally(() => setIsFetchingPrice(false));
     }
   }, [isOpen, activeTab]);
+
+  // Load user withdrawals and auto-refresh
+  useEffect(() => {
+    if (isOpen && user?.id) {
+      loadUserWithdrawals();
+      const interval = setInterval(loadUserWithdrawals, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isOpen, user?.id]);
+
+  // Update countdown timer every second for pending withdrawals
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const newCountdowns: { [key: string]: number } = {};
+      
+      userWithdrawals.forEach((withdrawal) => {
+        if (withdrawal.status === 'pending' && withdrawal.requestTime) {
+          const requestTime = new Date(withdrawal.requestTime).getTime();
+          const elapsed = now - requestTime;
+          const oneHour = 60 * 60 * 1000;
+          const remaining = Math.max(0, oneHour - elapsed);
+          newCountdowns[withdrawal.id] = remaining;
+        }
+      });
+      
+      setCountdownTime(newCountdowns);
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, [userWithdrawals]);
+
+  const loadUserWithdrawals = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const withdrawals = await walletService.getUserWithdrawals();
+      setUserWithdrawals(withdrawals || []);
+    } catch (error) {
+      console.error('[WALLET MODAL] Failed to load withdrawals:', error);
+    }
+  };
+
+  const formatCountdown = (remaining: number): string => {
+    if (remaining <= 0) {
+      return language === 'my' ? 'Ready to process' : 'Ready to process';
+    }
+    
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const getWithdrawalStatusDisplay = (withdrawal: any) => {
+    if (withdrawal.status === 'completed') {
+      return {
+        text: language === 'my' ? 'Completed' : 'Completed',
+        color: 'text-ios-green',
+        bg: 'bg-ios-green/10',
+        border: 'border-ios-green/20'
+      };
+    }
+    if (withdrawal.status === 'processing') {
+      return {
+        text: language === 'my' ? 'Processing...' : 'Processing...',
+        color: 'text-ios-blue',
+        bg: 'bg-ios-blue/10',
+        border: 'border-ios-blue/20'
+      };
+    }
+    if (withdrawal.status === 'rejected') {
+      return {
+        text: language === 'my' ? 'Rejected' : 'Rejected',
+        color: 'text-ios-red',
+        bg: 'bg-ios-red/10',
+        border: 'border-ios-red/20'
+      };
+    }
+    
+    // Pending status
+    const remaining = countdownTime[withdrawal.id] ?? 0;
+    const isReady = remaining <= 0;
+    
+    return {
+      text: isReady 
+        ? (language === 'my' ? 'Ready to process' : 'Ready to process')
+        : `${language === 'my' ? 'Processing in' : 'Processing in'}: ${formatCountdown(remaining)}`,
+      color: isReady ? 'text-ios-yellow' : 'text-ios-label-secondary',
+      bg: isReady ? 'bg-ios-yellow/10' : 'bg-ios-gray5',
+      border: isReady ? 'border-ios-yellow/20' : 'border-white/5'
+    };
+  };
 
   // Contact Support helper
   const handleContactSupport = () => {
@@ -157,22 +253,25 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
       // Call API to create withdrawal request
       // No TON transaction needed - balance is deducted immediately
       // Funds will be sent after 1 hour delay
-      await walletService.createWithdrawalRequest({
+      
+      const withdrawal = await walletService.createWithdrawalRequest({
         kyatAmount,
         tonAddress: destinationAddress.trim(),
       });
 
-      console.log('[WITHDRAW] request submitted via API');
+      console.log('[WITHDRAW] request created', withdrawal);
+
       setWithdrawTxSuccess(true);
       setWithdrawTxError(null);
       
       // Clear form after successful send
-      setTimeout(() => {
-        setWithdrawAmount('');
-        setWithdrawUsdtAmount('');
-        setTonAddress('');
-        setWithdrawTxSuccess(false);
-      }, 5000);
+      setWithdrawAmount('');
+      setWithdrawUsdtAmount('');
+      setTonAddress('');
+      
+      // Refresh withdrawals list and user balance
+      await loadUserWithdrawals();
+      await onRefresh();
     } catch (error: any) {
       console.error('[WITHDRAW] request failed', error);
       setWithdrawTxError(error?.message || (language === 'my' ? 'Withdraw request ပို့ဆောင်မှု မအောင်မြင်ပါ' : 'Withdraw request failed'));
@@ -579,6 +678,61 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                                   ? 'Withdraw request ပို့ပြီးပါပြီ။ 1 နာရီအတွင်း process လုပ်ပါမည်။' 
                                   : 'Withdraw request submitted. Funds will be processed within 1 hour.'}
                             </p>
+                        </div>
+                    )}
+
+                    {/* Withdrawal Status List */}
+                    {userWithdrawals.length > 0 && (
+                        <div className="space-y-2">
+                            <h4 className="text-[13px] font-semibold text-ios-label-secondary uppercase tracking-wide px-1">
+                                {language === 'my' ? 'ငွေထုတ်ယူမှု မှတ်တမ်း' : 'Withdrawal History'}
+                            </h4>
+                            {userWithdrawals.slice(0, 5).map((withdrawal) => {
+                                const statusDisplay = getWithdrawalStatusDisplay(withdrawal);
+                                const requestTime = new Date(withdrawal.requestTime || withdrawal.createdAt);
+                                const readyTime = new Date(requestTime.getTime() + 60 * 60 * 1000);
+                                
+                                return (
+                                    <div 
+                                        key={withdrawal.id}
+                                        className={`p-3 rounded-xl ${statusDisplay.bg} border ${statusDisplay.border}`}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div>
+                                                <div className="text-white font-semibold text-[14px]">
+                                                    {Number(withdrawal.kyatAmount).toLocaleString()} KYAT
+                                                </div>
+                                                <div className="text-[11px] text-ios-label-secondary mt-1">
+                                                    {requestTime.toLocaleString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className={`text-[12px] font-medium ${statusDisplay.color}`}>
+                                                    {statusDisplay.text}
+                                                </div>
+                                                {withdrawal.status === 'pending' && (
+                                                    <div className="text-[10px] text-ios-label-tertiary mt-1">
+                                                        {language === 'my' ? 'Ready at' : 'Ready at'}: {readyTime.toLocaleTimeString('en-US', {
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {withdrawal.tonTxHash && (
+                                            <div className="text-[10px] text-ios-label-tertiary font-mono mt-2 pt-2 border-t border-white/5">
+                                                TX: {withdrawal.tonTxHash.slice(0, 16)}...
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
 
