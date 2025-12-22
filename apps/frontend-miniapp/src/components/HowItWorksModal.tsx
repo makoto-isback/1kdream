@@ -19,6 +19,19 @@ export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) 
     step2: { title: { en: string; my: string }; description: { en: string; my: string } };
     step3: { title: { en: string; my: string }; description: { en: string; my: string } };
     step4: { title: { en: string; my: string }; description: { en: string; my: string } };
+    example: {
+      title: { en: string; my: string };
+      roundDetails: { en: string; my: string };
+      totalPool: { en: string; my: string };
+      winnerPool: { en: string; my: string };
+      winningBlock: { en: string; my: string };
+      betsOnBlock: { en: string; my: string };
+      totalOnBlock: { en: string; my: string };
+      calculations: { en: string; my: string };
+      payoutFormula: { en: string; my: string };
+      totalPaid: { en: string; my: string };
+      note: { en: string; my: string };
+    };
     rules: { title: { en: string; my: string }; rule1: { en: string; my: string }; rule2: { en: string; my: string }; rule3: { en: string; my: string } };
     close: { en: string; my: string };
   };
@@ -92,6 +105,57 @@ export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) 
             <div className="flex-1">
               <h3 className="text-white font-semibold mb-1">{t.step4.title[language]}</h3>
               <p className="text-ios-label-secondary text-sm leading-relaxed">{t.step4.description[language]}</p>
+            </div>
+          </div>
+
+          {/* Example Section */}
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+              <Icons.Info className="text-ios-blue" size={18} />
+              {t.example.title[language]}
+            </h3>
+            
+            <div className="bg-ios-gray5/50 rounded-xl p-4 space-y-3 mb-4">
+              <div>
+                <p className="text-ios-label-secondary text-xs mb-2">{t.example.roundDetails[language]}</p>
+                <div className="space-y-1 text-sm">
+                  <p className="text-white"><span className="text-ios-label-secondary">{t.example.totalPool[language]}</span> <span className="font-semibold text-ios-green">500,000 KYAT</span></p>
+                  <p className="text-white"><span className="text-ios-label-secondary">{t.example.winnerPool[language]}</span> <span className="font-semibold text-ios-green">450,000 KYAT</span></p>
+                  <p className="text-white"><span className="text-ios-label-secondary">{t.example.winningBlock[language]}</span> <span className="font-semibold text-ios-yellow">12</span></p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-white/10">
+                <p className="text-ios-label-secondary text-xs mb-2">{t.example.betsOnBlock[language]}</p>
+                <div className="space-y-1 text-xs font-mono">
+                  <p className="text-white">User A: <span className="text-ios-blue">1,000 KYAT</span></p>
+                  <p className="text-white">User B: <span className="text-ios-blue">5,000 KYAT</span></p>
+                  <p className="text-white">User C: <span className="text-ios-blue">10,000 KYAT</span></p>
+                  <p className="text-white">User D: <span className="text-ios-blue">50,000 KYAT</span></p>
+                  <p className="text-white">User E: <span className="text-ios-blue">100,000 KYAT</span></p>
+                  <p className="text-ios-green font-semibold mt-2">{t.example.totalOnBlock[language]} <span className="text-white">166,000 KYAT</span></p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-ios-gray5/50 rounded-xl p-4 space-y-2">
+              <p className="text-ios-label-secondary text-xs mb-2">{t.example.calculations[language]}</p>
+              <p className="text-ios-blue text-xs mb-3 font-mono">{t.example.payoutFormula[language]}</p>
+              <div className="space-y-1.5 text-xs font-mono">
+                <p className="text-white">User A: <span className="text-ios-green">(1,000 / 166,000) × 450,000 = <span className="font-bold">2,711 KYAT</span></span></p>
+                <p className="text-white">User B: <span className="text-ios-green">(5,000 / 166,000) × 450,000 = <span className="font-bold">13,554 KYAT</span></span></p>
+                <p className="text-white">User C: <span className="text-ios-green">(10,000 / 166,000) × 450,000 = <span className="font-bold">27,108 KYAT</span></span></p>
+                <p className="text-white">User D: <span className="text-ios-green">(50,000 / 166,000) × 450,000 = <span className="font-bold">135,542 KYAT</span></span></p>
+                <p className="text-white">User E: <span className="text-ios-green">(100,000 / 166,000) × 450,000 = <span className="font-bold">271,084 KYAT</span></span></p>
+                <p className="text-ios-green font-semibold mt-3 pt-2 border-t border-white/10">{t.example.totalPaid[language]} <span className="text-white font-bold">450,000 KYAT</span></p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-ios-green/10 border border-ios-green/30 rounded-lg">
+              <p className="text-ios-green text-xs leading-relaxed flex items-start gap-2">
+                <Icons.Check className="text-ios-green flex-shrink-0 mt-0.5" size={14} />
+                <span>{t.example.note[language]}</span>
+              </p>
             </div>
           </div>
 

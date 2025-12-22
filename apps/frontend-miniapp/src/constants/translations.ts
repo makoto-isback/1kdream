@@ -54,6 +54,19 @@ export const TRANSLATIONS: Translations = {
       description: { en: "If your number matches the winning number, you share the prize pool with other winners!", my: "သင့်နံပါတ်သည် အနိုင်ရသော နံပါတ်နှင့် ကိုက်ညီပါက၊ အခြားအနိုင်ရရှိသူများနှင့် ဆုကြေးငွေကို ဝေငှရရှိပါသည်။ သင့် ဝယ်ငွေများလျှင် ဝေဆုပိုပြီးရပါမည်။" }
     },
     exchangeRate: { en: "5,000 KYAT = $1", my: "5,000 KYAT = $1" },
+    example: {
+      title: { en: "Example: How Payouts Work", my: "ဥပမာ: ဆုငွေ ခွဲဝေပုံ" },
+      roundDetails: { en: "Round Details:", my: "ပွဲစဉ် အချက်အလက်များ:" },
+      totalPool: { en: "Total Pool:", my: "စုစုပေါင်း ဆုကြေးငွေ:" },
+      winnerPool: { en: "Winner Pool:", my: "အနိုင်ရရှိသူများ ဆုကြေးငွေ:" },
+      winningBlock: { en: "Winning Block:", my: "အနိုင်ရသော ဘလောက်:" },
+      betsOnBlock: { en: "Bets on Block 12:", my: "ဘလောက် 12 တွင် လောင်းကစားငွေ:" },
+      totalOnBlock: { en: "Total on Block 12:", my: "ဘလောက် 12 တွင် စုစုပေါင်း:" },
+      calculations: { en: "Calculations:", my: "တွက်ချက်မှုများ:" },
+      payoutFormula: { en: "Formula: (Your Bet / Total Winning Bets) × Winner Pool", my: "ပုံသေနည်း: (သင့်လောင်းကစားငွေ / စုစုပေါင်း အနိုင်ရ လောင်းကစားငွေ) × အနိုင်ရရှိသူများ ဆုကြေးငွေ" },
+      totalPaid: { en: "Total paid:", my: "စုစုပေါင်း ပေးချေငွေ:" },
+      note: { en: "Note: Winners receive their original bet amount back PLUS profit. The payout includes both!", my: "မှတ်ချက်: အနိုင်ရရှိသူများသည် သူတို့၏ မူလလောင်းကစားငွေကို ပြန်ရရှိပြီး အမြတ်ငွေကိုလည်း ရရှိပါသည်။ ပေးချေငွေတွင် နှစ်ခုလုံး ပါဝင်ပါသည်။" }
+    },
     rules: {
       title: { en: "Important Rules", my: "အရေးကြီးသော စည်းမျဉ်းများ" },
       rule1: { en: "Minimum bet: 1,000 KYAT per block", my: "အနည်းဆုံး လောင်းကစားငွေ: ဘလောက်တစ်ခုလျှင် 1,000 KYAT" },
