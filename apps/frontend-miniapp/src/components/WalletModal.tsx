@@ -7,6 +7,7 @@ import { User } from '../services/users';
 import { useWallet } from '../contexts/WalletContext';
 import { TON_TREASURY_ADDRESS, USDT_TREASURY_ADDRESS } from '../constants/treasury';
 import { walletService } from '../services/wallet';
+import { KBZPayLogo, WaveMoneyLogo } from './PaymentLogos';
 
 // Exchange rate constant
 const KYAT_PER_USDT = 5000;
@@ -447,7 +448,13 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                       onClick={handleContactSupport}
                       className="w-full p-4 rounded-xl bg-ios-gray5 flex items-center justify-between group hover:bg-ios-gray4 transition-all"
                     >
-                        <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
+                            <div className="flex items-center gap-2">
+                                <KBZPayLogo size={20} />
+                                <WaveMoneyLogo size={20} />
+                            </div>
+                        </div>
                         <Icons.User className="text-ios-blue" size={20} />
                     </button>
                 </div>
@@ -580,7 +587,13 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                       onClick={handleContactSupport}
                       className="w-full p-4 rounded-xl bg-ios-gray5 flex items-center justify-between group hover:bg-ios-gray4 transition-all"
                     >
-                        <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-white font-medium text-[15px]">{TRANSLATIONS.contact_support[language]}</span>
+                            <div className="flex items-center gap-2">
+                                <KBZPayLogo size={20} />
+                                <WaveMoneyLogo size={20} />
+                            </div>
+                        </div>
                         <Icons.User className="text-ios-blue" size={20} />
                     </button>
                 </div>
