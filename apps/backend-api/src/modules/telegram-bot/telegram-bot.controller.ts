@@ -37,5 +37,10 @@ export class TelegramBotController {
   async setWebhook() {
     return await this.telegramBotService.setWebhook();
   }
+
+  @Post('set-commands')
+  async setCommands() {
+    return await this.telegramBotService.setBotCommands();
+  }
 }
 

@@ -51,6 +51,9 @@ export class TelegramBotService implements OnModuleInit {
       } else {
         this.logger.warn('[TELEGRAM BOT] ⚠️ No webhook URL set - set TELEGRAM_WEBHOOK_URL to enable commands');
       }
+      
+      // Register bot commands so they show up when user types "/"
+      await this.setBotCommands();
     } else {
       this.logger.error('[TELEGRAM BOT] ❌ Disabled - TELEGRAM_COMMAND_BOT_TOKEN not set');
     }
@@ -100,6 +103,48 @@ export class TelegramBotService implements OnModuleInit {
     } catch (error: any) {
       this.logger.error(`[TELEGRAM BOT] Failed to get webhook info:`, error.message);
       return { ok: false, error: error.message };
+    }
+  }
+
+  async setBotCommands() {
+    if (!this.botToken) {
+      this.logger.warn('[TELEGRAM BOT] ⚠️ Cannot set bot commands - token not configured');
+      return { ok: false, error: 'Command bot token not configured' };
+    }
+
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/setMyCommands`;
+      
+      const commands = [
+        { command: 'start', description: 'Welcome message and game explanation' },
+        { command: 'help', description: 'Show all available commands' },
+        { command: 'rules', description: 'Display game rules and limits' },
+        { command: 'play', description: 'Open the game app' },
+        { command: 'round', description: 'Current round info' },
+        { command: 'pool', description: 'Current prize pool amount' },
+        { command: 'mybets', description: 'Your bets in current round' },
+        { command: 'history', description: 'Your betting history' },
+        { command: 'winners', description: 'Recent winners list' },
+        { command: 'balance', description: 'Check your KYAT balance and points' },
+        { command: 'deposit', description: 'Deposit instructions (TON USDT)' },
+        { command: 'withdraw', description: 'Withdrawal info and limits' },
+        { command: 'points', description: 'Points system explanation' },
+        { command: 'support', description: 'Contact support team' },
+      ];
+
+      const response = await axios.post(url, { commands });
+      
+      if (response.data.ok) {
+        this.logger.log(`[TELEGRAM BOT] ✅ Bot commands registered successfully (${commands.length} commands)`);
+        return { ok: true, commands: commands.length };
+      } else {
+        this.logger.error(`[TELEGRAM BOT] Failed to register commands: ${response.data.description || 'Unknown error'}`);
+        return { ok: false, error: response.data.description || 'Unknown error' };
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data || error.message;
+      this.logger.error(`[TELEGRAM BOT] ❌ Failed to register bot commands:`, errorMsg);
+      return { ok: false, error: errorMsg };
     }
   }
 
