@@ -31,27 +31,36 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    this.botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN') || null;
+    this.logger.log('[TELEGRAM BOT] 🚀 Initializing Telegram Bot Service...');
+    
+    // Use COMMAND_BOT_TOKEN for user commands (separate from notification bot)
+    this.botToken = this.configService.get<string>('TELEGRAM_COMMAND_BOT_TOKEN') || null;
     this.webhookUrl = this.configService.get<string>('TELEGRAM_WEBHOOK_URL') || null;
+
+    this.logger.log(`[TELEGRAM BOT] Command Bot Token: ${this.botToken ? '✅ Set' : '❌ Missing'}`);
+    this.logger.log(`[TELEGRAM BOT] Webhook URL: ${this.webhookUrl || '❌ Missing'}`);
 
     if (this.botToken) {
       this.isEnabled = true;
-      this.logger.log('[TELEGRAM BOT] ✅ Enabled');
+      this.logger.log('[TELEGRAM BOT] ✅ Command bot enabled and ready');
       
       // Set webhook if URL is provided
       if (this.webhookUrl) {
+        this.logger.log(`[TELEGRAM BOT] 🔗 Setting webhook to: ${this.webhookUrl}/telegram/webhook`);
         await this.setWebhook();
       } else {
         this.logger.warn('[TELEGRAM BOT] ⚠️ No webhook URL set - set TELEGRAM_WEBHOOK_URL to enable commands');
       }
     } else {
-      this.logger.warn('[TELEGRAM BOT] ⚠️ Disabled - TELEGRAM_BOT_TOKEN not set');
+      this.logger.error('[TELEGRAM BOT] ❌ Disabled - TELEGRAM_COMMAND_BOT_TOKEN not set');
     }
+    
+    this.logger.log(`[TELEGRAM BOT] 📊 Status: ${this.isEnabled ? 'ENABLED' : 'DISABLED'}`);
   }
 
   async setWebhook() {
     if (!this.botToken || !this.webhookUrl) {
-      return { ok: false, error: 'Bot token or webhook URL not configured' };
+      return { ok: false, error: 'Command bot token or webhook URL not configured' };
     }
     
     try {
@@ -81,7 +90,7 @@ export class TelegramBotService implements OnModuleInit {
 
   async getWebhookInfo() {
     if (!this.botToken) {
-      return { ok: false, error: 'Bot token not configured' };
+      return { ok: false, error: 'Command bot token not configured' };
     }
     
     try {
