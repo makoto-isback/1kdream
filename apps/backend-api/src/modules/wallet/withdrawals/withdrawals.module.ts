@@ -6,6 +6,7 @@ import { Withdrawal } from './entities/withdrawal.entity';
 import { UsersModule } from '../../users/users.module';
 import { TonModule } from '../../../ton/ton.module';
 import { AuthModule } from '../../auth/auth.module';
+import { TelegramNotificationModule } from '../../../services/telegram-notification.module';
 
 @Module({
   imports: [
@@ -13,10 +14,11 @@ import { AuthModule } from '../../auth/auth.module';
     UsersModule,
     TonModule,
     forwardRef(() => AuthModule), // Import AuthModule to access JwtModule for JwtAuthGuard
+    TelegramNotificationModule,
   ],
   controllers: [WithdrawalsController],
   providers: [WithdrawalsService],
-  exports: [WithdrawalsService],
+  exports: [WithdrawalsService, TypeOrmModule], // Export TypeOrmModule so jobs can inject Withdrawal repository
 })
 export class WithdrawalsModule {}
 

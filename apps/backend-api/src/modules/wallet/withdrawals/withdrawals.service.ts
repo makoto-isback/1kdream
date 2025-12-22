@@ -6,6 +6,7 @@ import { User } from '../../users/entities/user.entity';
 import { UsersService } from '../../users/users.service';
 import { TonService } from '../../../ton/ton.service';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { TelegramNotificationService } from '../../../services/telegram-notification.service';
 
 const KYAT_PER_USD = 5000;
 const MIN_WITHDRAWAL_KYAT = 5000;
@@ -22,6 +23,7 @@ export class WithdrawalsService {
     private tonService: TonService,
     @InjectDataSource()
     private dataSource: DataSource,
+    private telegramNotificationService: TelegramNotificationService,
   ) {}
 
   async createWithdrawalRequest(
@@ -118,6 +120,33 @@ export class WithdrawalsService {
       const savedWithdrawal = await queryRunner.manager.save(withdrawal);
       await queryRunner.commitTransaction();
 
+      // Send Telegram notification (after transaction commits)
+      // Load user with relations for notification
+      try {
+        const userForNotification = await this.usersService.findOne(userId);
+        this.telegramNotificationService.notifyNewWithdrawal(
+          {
+            id: savedWithdrawal.id,
+            kyatAmount: savedWithdrawal.kyatAmount,
+            usdtAmount: savedWithdrawal.usdtAmount,
+            tonAddress: savedWithdrawal.tonAddress,
+            requestTime: savedWithdrawal.requestTime,
+          },
+          {
+            username: userForNotification.username,
+            firstName: userForNotification.firstName,
+            lastName: userForNotification.lastName,
+            telegramId: userForNotification.telegramId,
+          },
+        ).catch((err) => {
+          // Log but don't fail withdrawal creation if notification fails
+          console.error('[WITHDRAWAL] Failed to send Telegram notification:', err);
+        });
+      } catch (err) {
+        // User not found - skip notification
+        console.error('[WITHDRAWAL] User not found for notification:', err);
+      }
+
       return savedWithdrawal;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -172,6 +201,28 @@ export class WithdrawalsService {
       await queryRunner.commitTransaction();
 
       console.log(`[ADMIN ACTION] Admin ${adminId} processed withdrawal ${withdrawalId} with TX: ${tonTxHash}. Amount: ${withdrawal.kyatAmount} KYAT`);
+
+      // Send Telegram notification
+      try {
+        const userForNotification = await this.usersService.findOne(withdrawal.userId);
+        this.telegramNotificationService.notifyWithdrawalCompleted(
+          {
+            id: withdrawal.id,
+            kyatAmount: withdrawal.kyatAmount,
+            usdtAmount: withdrawal.usdtAmount,
+            tonTxHash: withdrawal.tonTxHash,
+          },
+          {
+            username: userForNotification.username,
+            firstName: userForNotification.firstName,
+            lastName: userForNotification.lastName,
+          },
+        ).catch((err) => {
+          console.error('[WITHDRAWAL] Failed to send completion notification:', err);
+        });
+      } catch (err) {
+        console.error('[WITHDRAWAL] User not found for completion notification:', err);
+      }
 
       return withdrawal;
     } catch (error) {
@@ -235,6 +286,28 @@ export class WithdrawalsService {
       await queryRunner.commitTransaction();
 
       console.log(`[ADMIN ACTION] Admin ${adminId} rejected withdrawal ${withdrawalId}. Refunded ${withdrawal.kyatAmount} KYAT to user ${withdrawal.userId}. New balance: ${user.kyatBalance}`);
+
+      // Send Telegram notification
+      try {
+        const userForNotification = withdrawal.user || await this.usersService.findOne(withdrawal.userId);
+        this.telegramNotificationService.notifyWithdrawalRejected(
+          {
+            id: withdrawal.id,
+            kyatAmount: withdrawal.kyatAmount,
+            usdtAmount: withdrawal.usdtAmount,
+          },
+          {
+            username: userForNotification.username,
+            firstName: userForNotification.firstName,
+            lastName: userForNotification.lastName,
+          },
+          `Rejected by admin ${adminId}`,
+        ).catch((err) => {
+          console.error('[WITHDRAWAL] Failed to send rejection notification:', err);
+        });
+      } catch (err) {
+        console.error('[WITHDRAWAL] User not found for rejection notification:', err);
+      }
 
       return withdrawal;
     } catch (error) {
