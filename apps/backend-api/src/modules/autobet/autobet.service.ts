@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { AutoBetPlan, AutoBetPlanStatus } from './entities/autobet-plan.entity';
@@ -10,6 +10,8 @@ import { SystemService } from '../system/system.service';
 
 @Injectable()
 export class AutoBetService {
+  private readonly logger = new Logger(AutoBetService.name);
+  
   // Track last executed round per plan to avoid multiple executions in the same round
   private lastExecutedRound: Map<string, string> = new Map();
 
@@ -109,13 +111,17 @@ export class AutoBetService {
       try {
         const activeRound = await this.lotteryService.getActiveRound();
         if (activeRound) {
+          this.logger.log(`[AUTOBET] Executing immediate bets for new plan ${savedPlan.id} in round ${activeRound.id}`);
           // Execute bets for current round immediately
           await this.executePlanBets(savedPlan, activeRound.id);
+          // IMPORTANT: Mark this round as executed to prevent the cron job from double-executing
+          this.lastExecutedRound.set(savedPlan.id, activeRound.id);
+          this.logger.log(`[AUTOBET] Immediate execution complete. Marked round ${activeRound.id} as executed for plan ${savedPlan.id}`);
         }
       } catch (error) {
         // Log error but don't fail the plan creation
         // The cron job will retry on the next round
-        console.error(`Error executing immediate bets for plan ${savedPlan.id}:`, error);
+        this.logger.error(`[AUTOBET] Error executing immediate bets for plan ${savedPlan.id}:`, error);
       }
 
       return savedPlan;
@@ -196,15 +202,18 @@ export class AutoBetService {
       // Skip if this plan already executed for this round
       const lastRoundId = this.lastExecutedRound.get(plan.id);
       if (lastRoundId === activeRound.id) {
+        this.logger.debug(`[AUTOBET] Skipping plan ${plan.id} - already executed for round ${activeRound.id}`);
         continue;
       }
       try {
+        this.logger.log(`[AUTOBET] Executing plan ${plan.id} for round ${activeRound.id} (${plan.blocks.length} blocks x ${plan.betAmountPerBlock} KYAT)`);
         await this.executePlanBets(plan, activeRound.id);
         // Mark as executed for this round
         this.lastExecutedRound.set(plan.id, activeRound.id);
+        this.logger.log(`[AUTOBET] Plan ${plan.id} executed successfully for round ${activeRound.id}`);
       } catch (error) {
         // Log error but continue with other plans
-        console.error(`Error executing plan ${plan.id}:`, error);
+        this.logger.error(`[AUTOBET] Error executing plan ${plan.id}:`, error);
       }
     }
   }
