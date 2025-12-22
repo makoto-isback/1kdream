@@ -24,6 +24,7 @@ import { UsdtWithdrawalExecutionJob } from './jobs/usdt-withdrawal-execution.job
 import { WithdrawalReadyNotificationJob } from './jobs/withdrawal-ready-notification.job';
 import { EventsModule } from './gateways/events.module';
 import { TelegramNotificationModule } from './services/telegram-notification.module';
+import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TelegramNotificationModule } from './services/telegram-notification.mod
     TreasuryModule,
     EventsModule,
     TelegramNotificationModule,
+    TelegramBotModule,
   ],
   controllers: [AppController],
   providers: [
