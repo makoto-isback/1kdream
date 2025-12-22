@@ -35,5 +35,31 @@ export const TRANSLATIONS: Translations = {
   withdrawal_delay: { en: "Withdrawal can only be processed after 1 hour", my: "ငွေထုတ်ယူမှုကို 1 နာရီအကြာတွင်သာ လုပ်ဆောင်နိုင်သည်" },
   min_redemption: { en: "Minimum redemption is 10,000 points", my: "အနည်းဆုံး ပြန်လည်ထုတ်ယူမှုသည် 10,000 အမှတ်ဖြစ်သည်" },
   insufficient_points: { en: "Insufficient points", my: "အမှတ်မလုံလောက်ပါ" },
+  howItWorks: {
+    title: { en: "How It Works", my: "ဘယ်လိုအလုပ်လုပ်လဲ" },
+    step1: {
+      title: { en: "Choose Your Numbers", my: "နံပါတ်များ ရွေးချယ်ပါ" },
+      description: { en: "Select 1-25 blocks (numbers) you want to bet on. You can choose multiple blocks.", my: "သင်လောင်းကစားလိုသော 1-25 ဘလောက် (နံပါတ်) များကို ရွေးချယ်ပါ။ ဘလောက်များစွာ ရွေးချယ်နိုင်သည်။" }
+    },
+    step2: {
+      title: { en: "Set Your Bet Amount", my: "လောင်းကစားငွေ သတ်မှတ်ပါ" },
+      description: { en: "Enter the amount you want to bet per block. Minimum is 1,000 KYAT per block.", my: "ဘလောက်တစ်ခုစီအတွက် လောင်းကစားလိုသော ငွေပမာဏကို ထည့်သွင်းပါ။ အနည်းဆုံး 1,000 KYAT ဖြစ်သည်။" }
+    },
+    step3: {
+      title: { en: "Wait for the Draw", my: "ဆုရရှိရန် စောင့်ဆိုင်းပါ" },
+      description: { en: "Each round lasts until the draw time. The winning number is randomly selected from 1-25.", my: "ပွဲစဉ်တစ်ခုစီသည် ဆုရရှိရန် အချိန်အထိ ကြာမြင့်သည်။ အနိုင်ရသော နံပါတ်ကို 1-25 မှ ကျပန်းရွေးချယ်သည်။" }
+    },
+    step4: {
+      title: { en: "Win Prizes", my: "ဆုများ ရရှိပါ" },
+      description: { en: "If your number matches the winning number, you share the prize pool with other winners!", my: "သင့်နံပါတ်သည် အနိုင်ရသော နံပါတ်နှင့် ကိုက်ညီပါက၊ အခြားအနိုင်ရရှိသူများနှင့် ဆုကြေးငွေကို ဝေငှရရှိပါသည်။" }
+    },
+    rules: {
+      title: { en: "Important Rules", my: "အရေးကြီးသော စည်းမျဉ်းများ" },
+      rule1: { en: "Minimum bet: 1,000 KYAT per block", my: "အနည်းဆုံး လောင်းကစားငွေ: ဘလောက်တစ်ခုလျှင် 1,000 KYAT" },
+      rule2: { en: "Maximum 10 bets per round", my: "တစ်ပတ်လျှင် အများဆုံး 10 ကြိမ်" },
+      rule3: { en: "Maximum 100,000 KYAT total per round", my: "တစ်ပတ်လျှင် အများဆုံး 100,000 KYAT" }
+    },
+    close: { en: "Got it!", my: "နားလည်ပါပြီ" }
+  }
 };
 

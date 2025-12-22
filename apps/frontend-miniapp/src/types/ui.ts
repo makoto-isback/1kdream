@@ -19,10 +19,14 @@ export interface NumberStats {
   isDisabled: boolean;
 }
 
+export type TranslationValue = {
+  en: string;
+  my: string;
+} | {
+  [key: string]: TranslationValue;
+};
+
 export interface Translations {
-  [key: string]: {
-    en: string;
-    my: string;
-  };
+  [key: string]: TranslationValue;
 }
 

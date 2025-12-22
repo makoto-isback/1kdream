@@ -1,0 +1,125 @@
+import React from 'react';
+import { Language } from '../types/ui';
+import { TRANSLATIONS } from '../constants/translations';
+import { Icons } from './Icons';
+
+interface Props {
+  language: Language;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) => {
+  if (!isOpen) return null;
+
+  const t = TRANSLATIONS.howItWorks as {
+    title: { en: string; my: string };
+    step1: { title: { en: string; my: string }; description: { en: string; my: string } };
+    step2: { title: { en: string; my: string }; description: { en: string; my: string } };
+    step3: { title: { en: string; my: string }; description: { en: string; my: string } };
+    step4: { title: { en: string; my: string }; description: { en: string; my: string } };
+    rules: { title: { en: string; my: string }; rule1: { en: string; my: string }; rule2: { en: string; my: string }; rule3: { en: string; my: string } };
+    close: { en: string; my: string };
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" onClick={onClose} />
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto bg-ios-bg-primary rounded-2xl border border-white/10 shadow-2xl animate-fade-in-up">
+        {/* Header */}
+        <div className="sticky top-0 bg-ios-bg-primary border-b border-white/10 px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Icons.Info className="text-ios-blue" size={20} />
+            {t.title[language]}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-ios-gray5 transition-colors"
+          >
+            <Icons.Close size={20} className="text-white" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="px-6 py-6 space-y-6">
+          {/* Step 1 */}
+          <div className="flex gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-ios-blue/20 flex items-center justify-center">
+              <span className="text-ios-blue font-bold text-lg">1</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-semibold mb-1">{t.step1.title[language]}</h3>
+              <p className="text-ios-label-secondary text-sm leading-relaxed">{t.step1.description[language]}</p>
+            </div>
+          </div>
+
+          {/* Step 2 */}
+          <div className="flex gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-ios-green/20 flex items-center justify-center">
+              <span className="text-ios-green font-bold text-lg">2</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-semibold mb-1">{t.step2.title[language]}</h3>
+              <p className="text-ios-label-secondary text-sm leading-relaxed">{t.step2.description[language]}</p>
+            </div>
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-ios-pink/20 flex items-center justify-center">
+              <span className="text-ios-pink font-bold text-lg">3</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-semibold mb-1">{t.step3.title[language]}</h3>
+              <p className="text-ios-label-secondary text-sm leading-relaxed">{t.step3.description[language]}</p>
+            </div>
+          </div>
+
+          {/* Step 4 */}
+          <div className="flex gap-4">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-ios-yellow/20 flex items-center justify-center">
+              <span className="text-ios-yellow font-bold text-lg">4</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-semibold mb-1">{t.step4.title[language]}</h3>
+              <p className="text-ios-label-secondary text-sm leading-relaxed">{t.step4.description[language]}</p>
+            </div>
+          </div>
+
+          {/* Rules Section */}
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+              <Icons.Check className="text-ios-green" size={18} />
+              {t.rules.title[language]}
+            </h3>
+            <ul className="space-y-3">
+              <li className="flex items-start gap-3 text-sm text-ios-label-secondary">
+                <span className="text-ios-blue mt-0.5 font-bold">•</span>
+                <span className="leading-relaxed">{t.rules.rule1[language]}</span>
+              </li>
+              <li className="flex items-start gap-3 text-sm text-ios-label-secondary">
+                <span className="text-ios-blue mt-0.5 font-bold">•</span>
+                <span className="leading-relaxed">{t.rules.rule2[language]}</span>
+              </li>
+              <li className="flex items-start gap-3 text-sm text-ios-label-secondary">
+                <span className="text-ios-blue mt-0.5 font-bold">•</span>
+                <span className="leading-relaxed">{t.rules.rule3[language]}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-ios-bg-primary border-t border-white/10 px-6 py-4">
+          <button
+            onClick={onClose}
+            className="w-full bg-ios-blue text-white py-3 rounded-xl font-semibold hover:bg-ios-blue/90 transition-colors active:scale-95"
+          >
+            {t.close[language]}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+

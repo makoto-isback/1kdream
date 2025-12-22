@@ -22,6 +22,7 @@ import { LotteryRound, lotteryService, Winner } from '../services/lottery';
 import { UserRoundHistory } from '../components/UserRoundHistory';
 import { MyBetsThisRound } from '../components/MyBetsThisRound';
 import AdminPanel from '../components/AdminPanel';
+import { HowItWorksModal } from '../components/HowItWorksModal';
 import api from '../services/api';
 import { socketService, RoundCompletedEvent } from '../services/socket';
 
@@ -74,6 +75,7 @@ const LotteryPage: React.FC = () => {
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [hasActiveAutoBuy, setHasActiveAutoBuy] = useState(false);
   const [recentWinnersRounds, setRecentWinnersRounds] = useState<WinnerRound[]>([]);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   // Countdown is ONLY for display - no popup triggering logic
   const { countdown } = useCountdown(activeRound?.drawTime || null);
@@ -375,6 +377,13 @@ const LotteryPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center space-x-3">
+                    <button
+                        onClick={() => setShowHowItWorks(true)}
+                        className="p-2 rounded-full bg-ios-gray5 hover:bg-ios-gray4 transition-colors active:scale-95"
+                        title={language === 'en' ? 'How It Works' : 'ဘယ်လိုအလုပ်လုပ်လဲ'}
+                    >
+                        <Icons.Info size={18} className="text-white" />
+                    </button>
                      <div 
                         onClick={() => setIsWalletOpen(true)}
                         className="flex items-center space-x-2 bg-ios-gray5 hover:bg-ios-gray4 rounded-full pl-3 pr-1 py-1 cursor-pointer transition-all active:scale-95"
@@ -539,6 +548,12 @@ const LotteryPage: React.FC = () => {
             setWinnersRefreshKey(prev => prev + 1);
             setHistoryRefreshKey(prev => prev + 1);
           }}
+        />
+
+        <HowItWorksModal
+          language={language}
+          isOpen={showHowItWorks}
+          onClose={() => setShowHowItWorks(false)}
         />
 
     </div>
