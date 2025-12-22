@@ -86,6 +86,19 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
   const [tonPriceUsd, setTonPriceUsd] = useState<number>(5.5); // Default fallback
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
 
+  // Define loadUserWithdrawals before useEffect
+  const loadUserWithdrawals = React.useCallback(async () => {
+    if (!user?.id) return;
+    
+    try {
+      const withdrawals = await walletService.getUserWithdrawals();
+      setUserWithdrawals(withdrawals || []);
+    } catch (error) {
+      console.error('[WALLET MODAL] Failed to load withdrawals:', error);
+      // Don't throw - just log the error
+    }
+  }, [user?.id]);
+
   // Fetch TON price on mount and when deposit tab is active
   useEffect(() => {
     if (isOpen && activeTab === WalletTab.DEPOSIT) {
@@ -103,7 +116,7 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
       const interval = setInterval(loadUserWithdrawals, 30000); // Refresh every 30 seconds
       return () => clearInterval(interval);
     }
-  }, [isOpen, user?.id]);
+  }, [isOpen, user?.id, loadUserWithdrawals]);
 
   // Update countdown timer every second for pending withdrawals
   useEffect(() => {
@@ -126,17 +139,6 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
 
     return () => clearInterval(interval);
   }, [userWithdrawals]);
-
-  const loadUserWithdrawals = async () => {
-    if (!user?.id) return;
-    
-    try {
-      const withdrawals = await walletService.getUserWithdrawals();
-      setUserWithdrawals(withdrawals || []);
-    } catch (error) {
-      console.error('[WALLET MODAL] Failed to load withdrawals:', error);
-    }
-  };
 
   const formatCountdown = (remaining: number): string => {
     if (remaining <= 0) {

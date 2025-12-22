@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import './AdminPanel.css';
@@ -54,24 +54,31 @@ export default function AdminPanel() {
   
   console.log('[AdminPanel] Rendering admin panel for user:', user.username);
 
-  // Load withdrawals on mount and refresh every 30 seconds
-  useEffect(() => {
-    loadWithdrawals();
-    const interval = setInterval(loadWithdrawals, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadWithdrawals = async () => {
+  // Define loadWithdrawals before useEffect
+  const loadWithdrawals = React.useCallback(async () => {
+    // Only load if user is admin
+    if (!user?.isAdmin) return;
+    
     try {
       setWithdrawalsLoading(true);
       const response = await api.get('/admin/withdrawals');
       setWithdrawals(response.data || []);
     } catch (err: any) {
       console.error('Error loading withdrawals:', err);
+      // Don't throw - just log the error
     } finally {
       setWithdrawalsLoading(false);
     }
-  };
+  }, [user?.isAdmin]);
+
+  // Load withdrawals on mount and refresh every 30 seconds
+  useEffect(() => {
+    if (user?.isAdmin) {
+      loadWithdrawals();
+      const interval = setInterval(loadWithdrawals, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [loadWithdrawals, user?.isAdmin]);
 
   const formatTimeRemaining = (requestTime: string): string => {
     const request = new Date(requestTime);
