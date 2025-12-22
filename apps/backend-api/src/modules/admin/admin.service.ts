@@ -140,9 +140,11 @@ export class AdminService {
       const withdrawal = await this.withdrawalsService.getWithdrawalById(withdrawalId);
       this.logger.log(`[ADMIN ACTION] Admin ${adminId} executed withdrawal ${withdrawalId} (manual processing, status: ${withdrawal.status})`);
       return withdrawal;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`[ADMIN ACTION] Admin ${adminId} failed to execute withdrawal ${withdrawalId}:`, error);
-      throw error;
+      // Return more detailed error message
+      const errorMessage = error?.message || error?.response?.data?.message || 'Failed to execute withdrawal';
+      throw new Error(`Withdrawal execution failed: ${errorMessage}`);
     }
   }
 

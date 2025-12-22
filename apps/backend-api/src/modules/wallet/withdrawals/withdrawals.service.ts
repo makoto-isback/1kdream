@@ -349,10 +349,15 @@ export class WithdrawalsService {
     await this.withdrawalsRepository.save(withdrawal);
 
     try {
+      // Check if TON wallet is initialized
+      if (!this.tonService.isWalletInitialized()) {
+        throw new BadRequestException('TON wallet is not initialized. Please configure TON_SEED_PHRASE and TON_WALLET_ADDRESS.');
+      }
+
       // Send USDT via TON
       const txHash = await this.tonService.sendUsdt(
         withdrawal.tonAddress,
-        withdrawal.usdtAmount,
+        Number(withdrawal.usdtAmount),
       );
 
       if (txHash) {
@@ -368,11 +373,15 @@ export class WithdrawalsService {
         // If sendUsdt returns empty (manual processing), keep as processing
         return '';
       }
-    } catch (error) {
+    } catch (error: any) {
       // On error, revert to pending for retry
       withdrawal.status = WithdrawalStatus.PENDING;
       await this.withdrawalsRepository.save(withdrawal);
-      throw error;
+      
+      // Provide better error message
+      const errorMessage = error?.message || 'Failed to send USDT transaction';
+      console.error(`[WITHDRAWAL] Error executing withdrawal ${withdrawalId}:`, errorMessage);
+      throw new BadRequestException(`Failed to execute withdrawal: ${errorMessage}`);
     }
   }
 
