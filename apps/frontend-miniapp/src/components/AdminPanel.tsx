@@ -274,7 +274,7 @@ export default function AdminPanel() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' }}>
                       <div>
                         <div style={{ fontWeight: 'bold', color: '#fff', marginBottom: '5px' }}>
-                          {withdrawal.kyatAmount.toLocaleString()} KYAT ({withdrawal.usdtAmount.toFixed(6)} USDT)
+                          {Number(withdrawal.kyatAmount).toLocaleString()} KYAT ({Number(withdrawal.usdtAmount).toFixed(6)} USDT)
                         </div>
                         <div style={{ fontSize: '12px', color: '#999' }}>
                           User: {userDisplay}
