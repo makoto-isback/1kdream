@@ -10,12 +10,15 @@ export class TelegramBotController {
   @Post('webhook')
   @HttpCode(200)
   async handleWebhook(@Body() body: any) {
-    this.logger.debug(`[WEBHOOK] Received update: ${JSON.stringify(body)}`);
+    this.logger.log(`[WEBHOOK] 📨 Received update from Telegram`);
+    this.logger.log(`[WEBHOOK] Update data: ${JSON.stringify(body)}`);
     try {
       await this.telegramBotService.handleUpdate(body);
+      this.logger.log(`[WEBHOOK] ✅ Update processed successfully`);
       return { ok: true };
     } catch (error: any) {
-      this.logger.error(`[WEBHOOK] Error handling update:`, error);
+      this.logger.error(`[WEBHOOK] ❌ Error handling update:`, error);
+      this.logger.error(`[WEBHOOK] Error stack:`, error.stack);
       return { ok: false, error: error.message };
     }
   }

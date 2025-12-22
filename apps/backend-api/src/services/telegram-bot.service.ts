@@ -95,31 +95,50 @@ export class TelegramBotService implements OnModuleInit {
   }
 
   async handleUpdate(update: any) {
+    this.logger.log(`[TELEGRAM BOT] 🔄 Processing update...`);
+    
     if (!this.isEnabled) {
-      this.logger.warn('[TELEGRAM BOT] Received update but bot is disabled');
+      this.logger.warn('[TELEGRAM BOT] ⚠️ Received update but bot is disabled');
       return;
     }
 
-    this.logger.debug(`[TELEGRAM BOT] Received update: ${JSON.stringify(update)}`);
+    if (!this.botToken) {
+      this.logger.error('[TELEGRAM BOT] ❌ Bot token not set');
+      return;
+    }
+
+    this.logger.log(`[TELEGRAM BOT] 📥 Update received: ${JSON.stringify(update)}`);
 
     const message = update.message;
-    if (!message || !message.text) {
-      this.logger.debug('[TELEGRAM BOT] Update has no message or text, ignoring');
+    if (!message) {
+      this.logger.log('[TELEGRAM BOT] ⚠️ Update has no message field');
+      return;
+    }
+
+    if (!message.text) {
+      this.logger.log('[TELEGRAM BOT] ⚠️ Message has no text field, ignoring');
       return;
     }
 
     const chatId = message.chat.id;
     const text = message.text.trim();
-    const telegramId = message.from.id.toString();
+    const telegramId = message.from?.id?.toString();
 
-    this.logger.log(`[TELEGRAM BOT] Received command from ${telegramId}: ${text}`);
+    if (!telegramId) {
+      this.logger.error('[TELEGRAM BOT] ❌ No telegram ID in message');
+      return;
+    }
+
+    this.logger.log(`[TELEGRAM BOT] 👤 User ${telegramId} sent: "${text}"`);
 
     // Handle commands
     if (text.startsWith('/')) {
       const command = text.split(' ')[0].toLowerCase();
+      this.logger.log(`[TELEGRAM BOT] 🎯 Executing command: ${command}`);
       await this.handleCommand(command, chatId, telegramId, text);
     } else {
       // Echo non-commands
+      this.logger.log(`[TELEGRAM BOT] 💬 Non-command message, sending help`);
       await this.sendMessage(chatId, 'Please use a command. Type /help to see available commands.');
     }
   }
@@ -659,18 +678,26 @@ We're here to help! 💬`;
   }
 
   private async sendMessage(chatId: number, text: string, options?: any) {
-    if (!this.isEnabled || !this.botToken) return;
+    if (!this.isEnabled || !this.botToken) {
+      this.logger.warn(`[TELEGRAM BOT] ⚠️ Cannot send message - bot disabled or no token`);
+      return;
+    }
 
     try {
       const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
-      await axios.post(url, {
+      this.logger.log(`[TELEGRAM BOT] 📤 Sending message to chat ${chatId}`);
+      const response = await axios.post(url, {
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
         ...options,
       });
+      this.logger.log(`[TELEGRAM BOT] ✅ Message sent successfully`);
+      return response.data;
     } catch (error: any) {
-      this.logger.error('[TELEGRAM BOT] Failed to send message:', error.message);
+      this.logger.error(`[TELEGRAM BOT] ❌ Failed to send message to chat ${chatId}:`, error.response?.data || error.message);
+      this.logger.error(`[TELEGRAM BOT] Error details:`, JSON.stringify(error.response?.data || {}));
+      throw error;
     }
   }
 }
