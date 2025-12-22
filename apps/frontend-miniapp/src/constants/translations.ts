@@ -39,11 +39,11 @@ export const TRANSLATIONS: Translations = {
     title: { en: "How It Works", my: "ဘယ်လိုအလုပ်လုပ်လဲ" },
     step1: {
       title: { en: "Choose Your Numbers", my: "နံပါတ်များ ရွေးချယ်ပါ" },
-      description: { en: "Select 1-25 blocks (numbers) you want to bet on. You can choose multiple blocks.", my: "သင်လောင်းကစားလိုသော 1-25 ဘလောက် (နံပါတ်) များကို ရွေးချယ်ပါ။ ဘလောက်များစွာ ရွေးချယ်နိုင်သည်။" }
+      description: { en: "Select 1-25 blocks (numbers) you want to bet on. You can choose multiple blocks.", my: "သင်ဝယ်လိုသော 1-25 ဘလောက် (နံပါတ်) များကို ရွေးချယ်ပါ။ ဘလောက်များစွာ ရွေးချယ်နိုင်သည်။" }
     },
     step2: {
-      title: { en: "Set Your Bet Amount", my: "လောင်းကစားငွေ သတ်မှတ်ပါ" },
-      description: { en: "Enter the amount you want to bet per block. Minimum is 1,000 KYAT per block.", my: "ဘလောက်တစ်ခုစီအတွက် လောင်းကစားလိုသော ငွေပမာဏကို ထည့်သွင်းပါ။ အနည်းဆုံး 1,000 KYAT ဖြစ်သည်။" }
+      title: { en: "Set Your Bet Amount", my: "ဝယ်ငွေ သတ်မှတ်ပါ" },
+      description: { en: "Enter the amount you want to bet per block. Minimum is 1,000 KYAT per block.", my: "နံပါတ် တစ်ခုစီအတွက် ဝယ်လိုသော ငွေပမာဏကို ထည့်သွင်းပါ။ အနည်းဆုံး 1,000 KYAT ဖြစ်သည်။" }
     },
     step3: {
       title: { en: "Wait for the Draw", my: "ဆုရရှိရန် စောင့်ဆိုင်းပါ" },
@@ -51,8 +51,9 @@ export const TRANSLATIONS: Translations = {
     },
     step4: {
       title: { en: "Win Prizes", my: "ဆုများ ရရှိပါ" },
-      description: { en: "If your number matches the winning number, you share the prize pool with other winners!", my: "သင့်နံပါတ်သည် အနိုင်ရသော နံပါတ်နှင့် ကိုက်ညီပါက၊ အခြားအနိုင်ရရှိသူများနှင့် ဆုကြေးငွေကို ဝေငှရရှိပါသည်။" }
+      description: { en: "If your number matches the winning number, you share the prize pool with other winners!", my: "သင့်နံပါတ်သည် အနိုင်ရသော နံပါတ်နှင့် ကိုက်ညီပါက၊ အခြားအနိုင်ရရှိသူများနှင့် ဆုကြေးငွေကို ဝေငှရရှိပါသည်။ သင့် ဝယ်ငွေများလျှင် ဝေဆုပိုပြီးရပါမည်။" }
     },
+    exchangeRate: { en: "5,000 KYAT = $1", my: "5,000 KYAT = $1" },
     rules: {
       title: { en: "Important Rules", my: "အရေးကြီးသော စည်းမျဉ်းများ" },
       rule1: { en: "Minimum bet: 1,000 KYAT per block", my: "အနည်းဆုံး လောင်းကစားငွေ: ဘလောက်တစ်ခုလျှင် 1,000 KYAT" },

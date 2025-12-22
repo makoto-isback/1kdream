@@ -14,6 +14,7 @@ export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) 
 
   const t = TRANSLATIONS.howItWorks as {
     title: { en: string; my: string };
+    exchangeRate: { en: string; my: string };
     step1: { title: { en: string; my: string }; description: { en: string; my: string } };
     step2: { title: { en: string; my: string }; description: { en: string; my: string } };
     step3: { title: { en: string; my: string }; description: { en: string; my: string } };
@@ -42,6 +43,14 @@ export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) 
 
         {/* Content */}
         <div className="px-6 py-6 space-y-6">
+          {/* Exchange Rate Banner */}
+          <div className="bg-ios-blue/10 border border-ios-blue/30 rounded-xl px-4 py-3 mb-2">
+            <div className="flex items-center justify-center gap-2">
+              <Icons.Wallet className="text-ios-blue" size={18} />
+              <p className="text-ios-blue font-semibold text-sm">{t.exchangeRate[language]}</p>
+            </div>
+          </div>
+
           {/* Step 1 */}
           <div className="flex gap-4">
             <div className="flex-shrink-0 w-10 h-10 rounded-full bg-ios-blue/20 flex items-center justify-center">
