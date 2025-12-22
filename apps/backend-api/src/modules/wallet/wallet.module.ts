@@ -13,6 +13,7 @@ import { UsersModule } from '../users/users.module';
 import { TonModule } from '../../ton/ton.module';
 import { SystemModule } from '../system/system.module';
 import { AuthModule } from '../auth/auth.module';
+import { TelegramNotificationModule } from '../../services/telegram-notification.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuthModule } from '../auth/auth.module';
     ActivationModule,
     UsdtDepositsModule,
     UsdtWithdrawalsModule,
+    TelegramNotificationModule,
   ],
   controllers: [DepositsController, WithdrawalsController],
   providers: [DepositsService, WithdrawalsService],
