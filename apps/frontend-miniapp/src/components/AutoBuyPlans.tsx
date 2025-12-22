@@ -103,7 +103,7 @@ export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, on
                     {language === 'en' ? 'Amount per block' : 'ဘလောက်တစ်ခုစီအတွက် ပမာဏ'}: 
                   </span>
                   <span className="text-xs font-medium text-white">
-                    {plan.betAmountPerBlock.toLocaleString()} K
+                    {plan.betAmountPerBlock.toLocaleString()} Ks
                   </span>
                 </div>
                 <div className="flex items-center space-x-2">

@@ -96,7 +96,7 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
         </div>
         <div className="text-right">
           <span className="text-ios-green font-bold text-sm">
-            {totalBetsAmount.toLocaleString()} K
+            {totalBetsAmount.toLocaleString()} Ks
           </span>
         </div>
       </div>

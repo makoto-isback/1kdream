@@ -169,11 +169,11 @@ export const UserRoundHistory: React.FC<Props> = ({ language, refreshKey }) => {
                   {statusLabel}
                 </div>
                 <div className="text-[11px] text-ios-label-secondary">
-                  {language === 'en' ? 'Your bet' : 'သင့်ထိုးငွေ'}: {entry.userTotalBet.toLocaleString()} K
+                  {language === 'en' ? 'Your bet' : 'သင့်ထိုးငွေ'}: {entry.userTotalBet.toLocaleString()} Ks
                 </div>
                 {entry.status === 'win' && (
                   <div className="text-[11px] text-ios-label-secondary">
-                    {language === 'en' ? 'On winning #' : 'အနိုင်ရ နံပါတ်'}: {entry.userWinningBet.toLocaleString()} K
+                    {language === 'en' ? 'On winning #' : 'အနိုင်ရ နံပါတ်'}: {entry.userWinningBet.toLocaleString()} Ks
                   </div>
                 )}
               </div>

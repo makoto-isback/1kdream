@@ -388,7 +388,7 @@ const LotteryPage: React.FC = () => {
                         onClick={() => setIsWalletOpen(true)}
                         className="flex items-center space-x-2 bg-ios-gray5 hover:bg-ios-gray4 rounded-full pl-3 pr-1 py-1 cursor-pointer transition-all active:scale-95"
                      >
-                        <span className="text-[13px] font-semibold text-white">{(user?.kyatBalance || 0).toLocaleString()} K</span>
+                        <span className="text-[13px] font-semibold text-white">{(user?.kyatBalance || 0).toLocaleString()} Ks</span>
                          <div className="bg-ios-green p-1.5 rounded-full">
                             <Icons.Wallet size={12} className="text-white" />
                         </div>

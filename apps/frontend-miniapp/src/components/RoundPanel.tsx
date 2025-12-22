@@ -51,12 +51,12 @@ export const RoundPanel: React.FC<Props> = ({ language, round, countdown, userSt
             <div>
               <p className="text-[11px] text-ios-label-secondary mb-1">{TRANSLATIONS.pool[language]}</p>
               <p className="text-2xl font-bold text-ios-yellow tracking-tight">
-                {parseFloat(String(round.totalPool || 0)).toLocaleString()} <span className="text-lg">K</span>
+                {parseFloat(String(round.totalPool || 0)).toLocaleString()} <span className="text-lg">Ks</span>
               </p>
             </div>
             <div className="text-right">
                 <p className="text-[11px] text-ios-label-secondary mb-1">{TRANSLATIONS.your_stake[language]}</p>
-                <p className="text-lg font-medium text-white">{userStake.toLocaleString()} <span className="text-sm">K</span></p>
+                <p className="text-lg font-medium text-white">{userStake.toLocaleString()} <span className="text-sm">Ks</span></p>
             </div>
          </div>
       </div>

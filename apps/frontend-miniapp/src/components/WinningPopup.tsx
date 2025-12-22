@@ -223,7 +223,7 @@ export const WinningPopup: React.FC<Props> = ({
                       {language === 'en' ? 'Your Payout' : 'သင်ရရှိသော ငွေ'}
                     </p>
                     <p className="text-2xl font-bold text-ios-yellow">
-                      {userPayout.toLocaleString()} K
+                      {userPayout.toLocaleString()} Ks
                     </p>
                   </div>
                 )}

@@ -117,7 +117,7 @@ export const PurchaseControl: React.FC<Props> = ({
 
       <div className="flex items-center justify-between mb-5 px-1">
         <span className="text-sm text-ios-label-secondary">{TRANSLATIONS.total_cost[language]}</span>
-        <span className="text-xl font-bold text-white">{totalCost.toLocaleString()} <span className="text-sm font-normal text-ios-yellow">K</span></span>
+        <span className="text-xl font-bold text-white">{totalCost.toLocaleString()} <span className="text-sm font-normal text-ios-yellow">Ks</span></span>
       </div>
 
       <button

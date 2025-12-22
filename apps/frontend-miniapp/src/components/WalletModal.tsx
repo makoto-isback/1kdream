@@ -466,7 +466,7 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                         <p className="text-ios-label-secondary text-sm mb-1">
                             {language === 'my' ? 'ငွေထုတ်ယူနိုင်သော ပမာဏ' : 'Available for withdrawal'}
                         </p>
-                        <h3 className="text-3xl font-bold text-white tracking-tight mb-2">{balance.toLocaleString()} K</h3>
+                        <h3 className="text-3xl font-bold text-white tracking-tight mb-2">{balance.toLocaleString()} Ks</h3>
                     </div>
                     <div className="p-4 rounded-xl bg-ios-gray5 border border-white/5 space-y-3">
                         {!user?.tonAddress && (
