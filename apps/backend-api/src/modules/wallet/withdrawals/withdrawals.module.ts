@@ -6,6 +6,7 @@ import { Withdrawal } from './entities/withdrawal.entity';
 import { UsersModule } from '../../users/users.module';
 import { TonModule } from '../../../ton/ton.module';
 import { AuthModule } from '../../auth/auth.module';
+import { SystemModule } from '../../system/system.module';
 import { TelegramNotificationModule } from '../../../services/telegram-notification.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { TelegramNotificationModule } from '../../../services/telegram-notificat
     UsersModule,
     TonModule,
     forwardRef(() => AuthModule), // Import AuthModule to access JwtModule for JwtAuthGuard
+    SystemModule,
     TelegramNotificationModule,
   ],
   controllers: [WithdrawalsController],
