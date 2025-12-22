@@ -38,23 +38,7 @@ export default function AdminPanel() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [manualTxHash, setManualTxHash] = useState<{ [key: string]: string }>({});
 
-  // DEBUG: Log user admin status
-  console.log('[AdminPanel] User check:', { 
-    hasUser: !!user, 
-    isAdmin: user?.isAdmin,
-    userId: user?.id,
-    username: user?.username
-  });
-
-  // Only show if user is admin
-  if (!user?.isAdmin) {
-    console.log('[AdminPanel] Not showing - user is not admin');
-    return null;
-  }
-  
-  console.log('[AdminPanel] Rendering admin panel for user:', user.username);
-
-  // Define loadWithdrawals before useEffect
+  // Define loadWithdrawals BEFORE any conditional returns (React hooks rule)
   const loadWithdrawals = React.useCallback(async () => {
     // Only load if user is admin
     if (!user?.isAdmin) return;
@@ -79,6 +63,22 @@ export default function AdminPanel() {
       return () => clearInterval(interval);
     }
   }, [loadWithdrawals, user?.isAdmin]);
+
+  // DEBUG: Log user admin status
+  console.log('[AdminPanel] User check:', { 
+    hasUser: !!user, 
+    isAdmin: user?.isAdmin,
+    userId: user?.id,
+    username: user?.username
+  });
+
+  // Only show if user is admin (AFTER all hooks)
+  if (!user?.isAdmin) {
+    console.log('[AdminPanel] Not showing - user is not admin');
+    return null;
+  }
+  
+  console.log('[AdminPanel] Rendering admin panel for user:', user.username);
 
   const formatTimeRemaining = (requestTime: string): string => {
     const request = new Date(requestTime);
