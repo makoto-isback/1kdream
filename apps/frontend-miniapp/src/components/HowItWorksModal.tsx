@@ -31,6 +31,9 @@ export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) 
       payoutFormula: { en: string; my: string };
       totalPaid: { en: string; my: string };
       note: { en: string; my: string };
+      noWinnerTitle: { en: string; my: string };
+      noWinnerDescription: { en: string; my: string };
+      noWinnerExample: { en: string; my: string };
     };
     rules: { title: { en: string; my: string }; rule1: { en: string; my: string }; rule2: { en: string; my: string }; rule3: { en: string; my: string } };
     close: { en: string; my: string };
@@ -156,6 +159,25 @@ export const HowItWorksModal: React.FC<Props> = ({ language, isOpen, onClose }) 
                 <Icons.Check className="text-ios-green flex-shrink-0 mt-0.5" size={14} />
                 <span>{t.example.note[language]}</span>
               </p>
+            </div>
+          </div>
+
+          {/* No Winner Section */}
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+              <Icons.Info className="text-ios-yellow" size={18} />
+              {t.example.noWinnerTitle[language]}
+            </h3>
+            <div className="bg-ios-yellow/10 border border-ios-yellow/30 rounded-xl p-4 space-y-3">
+              <p className="text-ios-label-secondary text-sm leading-relaxed">
+                {t.example.noWinnerDescription[language]}
+              </p>
+              <div className="mt-3 p-3 bg-ios-gray5/50 rounded-lg">
+                <p className="text-ios-yellow text-xs leading-relaxed flex items-start gap-2">
+                  <Icons.Check className="text-ios-yellow flex-shrink-0 mt-0.5" size={14} />
+                  <span>{t.example.noWinnerExample[language]}</span>
+                </p>
+              </div>
             </div>
           </div>
 

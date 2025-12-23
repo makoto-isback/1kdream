@@ -51,7 +51,7 @@ export const TRANSLATIONS: Translations = {
     },
     step4: {
       title: { en: "Win Prizes", my: "ဆုများ ရရှိပါ" },
-      description: { en: "If your number matches the winning number, you share the prize pool with other winners!", my: "သင့်နံပါတ်သည် အနိုင်ရသော နံပါတ်နှင့် ကိုက်ညီပါက၊ အခြားအနိုင်ရရှိသူများနှင့် ဆုကြေးငွေကို ဝေငှရရှိပါသည်။ သင့် ဝယ်ငွေများလျှင် ဝေဆုပိုပြီးရပါမည်။" }
+      description: { en: "If your number matches the winning number, you share the prize pool with other winners! If no one wins, all players get 90% of their bet back (proportional to bet amount).", my: "သင့်နံပါတ်သည် အနိုင်ရသော နံပါတ်နှင့် ကိုက်ညီပါက၊ အခြားအနိုင်ရရှိသူများနှင့် ဆုကြေးငွေကို ဝေငှရရှိပါသည်။ သင့် ဝယ်ငွေများလျှင် ဝေဆုပိုပြီးရပါမည်။ အနိုင်ရရှိသူ မရှိပါက၊ လောင်းကစားသူအားလုံးအား သူတို့၏ လောင်းကစားငွေ၏ 90% ကို ပြန်ပေးမည် (လောင်းကစားငွေပမာဏအလိုက်)။" }
     },
     exchangeRate: { en: "5,000 KYAT = $1", my: "5,000 KYAT = $1" },
     example: {
@@ -65,7 +65,10 @@ export const TRANSLATIONS: Translations = {
       calculations: { en: "Calculations:", my: "တွက်ချက်မှုများ:" },
       payoutFormula: { en: "Formula: (Your Bet / Total Winning Bets) × Winner Pool", my: "ပုံသေနည်း: (သင့်လောင်းကစားငွေ / စုစုပေါင်း အနိုင်ရ လောင်းကစားငွေ) × အနိုင်ရရှိသူများ ဆုကြေးငွေ" },
       totalPaid: { en: "Total paid:", my: "စုစုပေါင်း ပေးချေငွေ:" },
-      note: { en: "Note: Winners receive their original bet amount back PLUS profit. The payout includes both!", my: "မှတ်ချက်: အနိုင်ရရှိသူများသည် သူတို့၏ မူလလောင်းကစားငွေကို ပြန်ရရှိပြီး အမြတ်ငွေကိုလည်း ရရှိပါသည်။ ပေးချေငွေတွင် နှစ်ခုလုံး ပါဝင်ပါသည်။" }
+      note: { en: "Note: Winners receive their original bet amount back PLUS profit. The payout includes both!", my: "မှတ်ချက်: အနိုင်ရရှိသူများသည် သူတို့၏ မူလလောင်းကစားငွေကို ပြန်ရရှိပြီး အမြတ်ငွေကိုလည်း ရရှိပါသည်။ ပေးချေငွေတွင် နှစ်ခုလုံး ပါဝင်ပါသည်။" },
+      noWinnerTitle: { en: "What if No One Wins?", my: "အနိုင်ရရှိသူ မရှိပါက?" },
+      noWinnerDescription: { en: "If no one bets on the winning number, all players get 90% of their bet back (proportional to bet amount). The remaining 10% is the admin fee.", my: "အနိုင်ရသော နံပါတ်တွင် လောင်းကစားသူ မရှိပါက၊ လောင်းကစားသူအားလုံးအား သူတို့၏ လောင်းကစားငွေ၏ 90% ကို ပြန်ပေးမည် (လောင်းကစားငွေပမာဏအလိုက်)။ ကျန်ရှိသော 10% သည် စီမံခန့်ခွဲမှု အခကြေးငွေ ဖြစ်သည်။" },
+      noWinnerExample: { en: "Example: If you bet 10,000 KYAT and no one wins, you get 9,000 KYAT back.", my: "ဥပမာ: သင်သည် 10,000 KYAT လောင်းကစားပြီး အနိုင်ရရှိသူ မရှိပါက၊ သင်သည် 9,000 KYAT ပြန်ရရှိမည်။" }
     },
     rules: {
       title: { en: "Important Rules", my: "အရေးကြီးသော စည်းမျဉ်းများ" },

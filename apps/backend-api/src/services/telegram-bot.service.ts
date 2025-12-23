@@ -357,6 +357,11 @@ Use any command to get started! 🚀`;
 • Proportional payouts (bet more, win more!)
 • You get original bet + profit
 
+<b>No Winner Refund:</b>
+• If no one wins, all players get 90% of their bet back
+• Refund is proportional to your bet amount
+• 10% admin fee applies (same as winning rounds)
+
 <b>Exchange Rate:</b>
 • 5,000 KYAT = $1 USDT
 
