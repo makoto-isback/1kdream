@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Bet } from '../modules/bets/entities/bet.entity';
 import { LotteryRound, LotteryRoundStatus } from '../modules/lottery/entities/lottery-round.entity';
+import { botTranslations, Language } from './telegram-bot-translations';
 
 @Injectable()
 export class TelegramBotService implements OnModuleInit {
@@ -176,6 +177,26 @@ export class TelegramBotService implements OnModuleInit {
 
     this.logger.log(`[TELEGRAM BOT] 📥 Update received: ${JSON.stringify(update)}`);
 
+    // Handle callback queries (button clicks)
+    if (update.callback_query) {
+      const callbackQuery = update.callback_query;
+      const chatId = callbackQuery.message.chat.id;
+      const telegramId = callbackQuery.from.id.toString();
+      const data = callbackQuery.data;
+
+      this.logger.log(`[TELEGRAM BOT] 🔘 Callback query from user ${telegramId}: ${data}`);
+
+      if (data && data.startsWith('lang_')) {
+        const language = data.split('_')[1] as Language;
+        await this.handleLanguageSelection(chatId, telegramId, language, callbackQuery.id);
+        return;
+      }
+
+      // Answer callback query to remove loading state
+      await this.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+
     const message = update.message;
     if (!message) {
       this.logger.log('[TELEGRAM BOT] ⚠️ Update has no message field');
@@ -206,202 +227,158 @@ export class TelegramBotService implements OnModuleInit {
     } else {
       // Echo non-commands
       this.logger.log(`[TELEGRAM BOT] 💬 Non-command message, sending help`);
-      await this.sendMessage(chatId, 'Please use a command. Type /help to see available commands.');
+      const user = await this.usersService.findByTelegramId(telegramId);
+      const lang = (user?.language || 'en') as Language;
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.errors.nonCommandMessage);
     }
   }
 
   private async handleCommand(command: string, chatId: number, telegramId: string, fullText: string) {
     try {
+      const lang = await this.getUserLanguage(telegramId);
+      const t = botTranslations[lang];
+
       switch (command) {
         case '/start':
-          await this.handleStart(chatId);
+          await this.handleStart(chatId, telegramId);
           break;
         case '/help':
-          await this.handleHelp(chatId);
+          await this.handleHelp(chatId, lang);
           break;
         case '/rules':
-          await this.handleRules(chatId);
+          await this.handleRules(chatId, lang);
           break;
         case '/play':
-          await this.handlePlay(chatId);
+          await this.handlePlay(chatId, lang);
           break;
         case '/round':
-          await this.handleRound(chatId, telegramId);
+          await this.handleRound(chatId, telegramId, lang);
           break;
         case '/pool':
-          await this.handlePool(chatId, telegramId);
+          await this.handlePool(chatId, telegramId, lang);
           break;
         case '/mybets':
-          await this.handleMyBets(chatId, telegramId);
+          await this.handleMyBets(chatId, telegramId, lang);
           break;
         case '/history':
-          await this.handleHistory(chatId, telegramId);
+          await this.handleHistory(chatId, telegramId, lang);
           break;
         case '/winners':
-          await this.handleWinners(chatId);
+          await this.handleWinners(chatId, lang);
           break;
         case '/balance':
-          await this.handleBalance(chatId, telegramId);
+          await this.handleBalance(chatId, telegramId, lang);
           break;
         case '/deposit':
-          await this.handleDeposit(chatId, telegramId);
+          await this.handleDeposit(chatId, telegramId, lang);
           break;
         case '/withdraw':
-          await this.handleWithdraw(chatId);
+          await this.handleWithdraw(chatId, lang);
           break;
         case '/points':
-          await this.handlePoints(chatId, telegramId);
+          await this.handlePoints(chatId, telegramId, lang);
           break;
         case '/support':
-          await this.handleSupport(chatId);
+          await this.handleSupport(chatId, lang);
           break;
         default:
-          await this.sendMessage(chatId, 'Unknown command. Use /help to see all commands.');
+          await this.sendMessage(chatId, t.errors.unknownCommand);
       }
     } catch (error: any) {
       this.logger.error(`[TELEGRAM BOT] Error handling command ${command}:`, error);
-      await this.sendMessage(chatId, 'An error occurred. Please try again later.');
+      const lang = await this.getUserLanguage(telegramId);
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.errors.errorOccurred);
+    }
+  }
+
+  // Helper method to get user's language
+  private async getUserLanguage(telegramId: string): Promise<Language> {
+    const user = await this.usersService.findByTelegramId(telegramId);
+    return (user?.language || 'en') as Language;
+  }
+
+  // Handle language selection callback
+  private async handleLanguageSelection(chatId: number, telegramId: string, language: Language, callbackQueryId: string) {
+    try {
+      // Update user's language preference
+      await this.usersService.updateLanguageByTelegramId(telegramId, language);
+      
+      // Answer callback query
+      await this.answerCallbackQuery(callbackQueryId, `Language set to ${language === 'en' ? 'English' : 'မြန်မာ'}`);
+
+      // Send welcome message in selected language
+      const t = botTranslations[language];
+      await this.sendMessage(chatId, t.welcome);
+      
+      this.logger.log(`[TELEGRAM BOT] ✅ Language set to ${language} for user ${telegramId}`);
+    } catch (error: any) {
+      this.logger.error(`[TELEGRAM BOT] ❌ Error handling language selection:`, error);
+      await this.answerCallbackQuery(callbackQueryId, 'Error setting language. Please try again.');
+    }
+  }
+
+  // Answer callback query
+  private async answerCallbackQuery(callbackQueryId: string, text?: string) {
+    if (!this.botToken) return;
+    
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/answerCallbackQuery`;
+      await axios.post(url, {
+        callback_query_id: callbackQueryId,
+        text: text || 'OK',
+        show_alert: false,
+      });
+    } catch (error: any) {
+      this.logger.error(`[TELEGRAM BOT] ❌ Failed to answer callback query:`, error);
     }
   }
 
   // Command handlers
-  private async handleStart(chatId: number) {
-    const message = `🎉 <b>Welcome to 1K Dream Lottery!</b> 🎉
+  private async handleStart(chatId: number, telegramId?: string) {
+    // If user already has a language preference, show welcome message
+    if (telegramId) {
+      const user = await this.usersService.findByTelegramId(telegramId);
+      if (user && user.language) {
+        const lang = user.language as Language;
+        const t = botTranslations[lang];
+        await this.sendMessage(chatId, t.welcome);
+        return;
+      }
+    }
 
-Hello! 👋 We're excited to have you here!
-
-🎮 <b>HOW TO PLAY:</b>
-
-1️⃣ <b>Choose Your Numbers</b>
-   • Select any number from 1-25 (you can pick multiple!)
-   • Each number is a "block" you can bet on
-
-2️⃣ <b>Set Your Bet Amount</b>
-   • Minimum: 1,000 KYAT per block
-   • Maximum: 100,000 KYAT total per round
-   • Maximum: 10 bets per round
-
-3️⃣ <b>Wait for the Draw</b>
-   • New round starts every hour
-   • One winning number is randomly selected (1-25)
-   • Watch the countdown timer!
-
-4️⃣ <b>Win Prizes!</b> 💰
-   • If your number wins, you share 90% of the prize pool!
-   • Payouts are proportional - bet more, win more!
-   • You get your original bet back PLUS profit!
-
-💡 <b>EXAMPLE:</b>
-   • Prize Pool: 500,000 KYAT
-   • Winner Pool: 450,000 KYAT (90%)
-   • You bet 10,000 KYAT on winning block
-   • Total bets on winning block: 100,000 KYAT
-   • Your payout: (10,000 ÷ 100,000) × 450,000 = 45,000 KYAT
-   • Profit: 35,000 KYAT! 🎊
-
-📋 <b>IMPORTANT RULES:</b>
-   • Minimum bet: 1,000 KYAT per block
-   • Max 10 bets per round
-   • Max 100,000 KYAT total per round
-   • Exchange rate: 5,000 KYAT = $1
-
-✨ <b>FEATURES:</b>
-   • 🎯 Single Buy - Bet on one round
-   • 🔄 Auto Buy - Set it and forget it!
-   • 💎 Points System - Earn points with every bet
-   • 💰 Deposit/Withdraw - Easy TON USDT transfers
-
-🎁 <b>BONUS:</b>
-   • Earn 10 points for every 1,000 KYAT bet
-   • Redeem 10,000+ points for KYAT (1:1 ratio)
-
-Ready to play? Use /play to open the app! 🚀
-
-Good luck! 🍀`;
-
-    await this.sendMessage(chatId, message);
-  }
-
-  private async handleHelp(chatId: number) {
-    const message = `📋 <b>Available Commands:</b>
-
-<b>Basic:</b>
-/start - Welcome message and game explanation
-/help - Show this help message
-/rules - Display game rules and limits
-/play - Open the game app
-
-<b>Game Info:</b>
-/round - Current round info
-/pool - Current prize pool amount
-/mybets - Your bets in current round
-/history - Your betting history
-/winners - Recent winners list
-
-<b>Wallet:</b>
-/balance - Check your KYAT balance and points
-/deposit - Deposit instructions (TON USDT)
-/withdraw - Withdrawal info and limits
-/points - Points system explanation
-
-<b>Support:</b>
-/support - Contact support team
-
-Use any command to get started! 🚀`;
-
-    await this.sendMessage(chatId, message);
-  }
-
-  private async handleRules(chatId: number) {
-    const message = `📋 <b>Game Rules</b>
-
-<b>Betting Limits:</b>
-• Minimum bet: 1,000 KYAT per block
-• Maximum bets: 10 per round
-• Maximum total: 100,000 KYAT per round
-
-<b>Round Frequency:</b>
-• New round every hour
-• One winning number (1-25) selected randomly
-
-<b>Payouts:</b>
-• 90% of pool goes to winners
-• 10% admin fee
-• Proportional payouts (bet more, win more!)
-• You get original bet + profit
-
-<b>No Winner Refund:</b>
-• If no one wins, all players get 90% of their bet back
-• Refund is proportional to your bet amount
-• 10% admin fee applies (same as winning rounds)
-
-<b>Exchange Rate:</b>
-• 5,000 KYAT = $1 USDT
-
-<b>Points System:</b>
-• Earn 10 points per 1,000 KYAT bet
-• Redeem 10,000+ points for KYAT (1:1 ratio)
-
-<b>Withdrawals:</b>
-• Minimum: 5,000 KYAT
-• Daily max: 500,000 KYAT
-• Processing time: 1 hour
-
-Use /play to start betting! 🎯`;
-
-    await this.sendMessage(chatId, message);
-  }
-
-  private async handlePlay(chatId: number) {
-    const message = `🎮 <b>Open the Game</b>
-
-Click the button below to open the 1K Dream Lottery app! 🚀`;
+    // Show language selection for new users or users without language preference
+    const t = botTranslations.en; // Use English for language selection UI
+    const message = `${t.languageSelection.title}\n\n${t.languageSelection.chooseLanguage}\n\n${t.languageSelection.english}\n${t.languageSelection.burmese}`;
 
     await this.sendMessage(chatId, message, {
       reply_markup: {
         inline_keyboard: [[
+          { text: t.languageSelection.english, callback_data: 'lang_en' },
+          { text: t.languageSelection.burmese, callback_data: 'lang_my' }
+        ]]
+      }
+    });
+  }
+
+  private async handleHelp(chatId: number, lang: Language) {
+    const t = botTranslations[lang];
+    await this.sendMessage(chatId, t.help);
+  }
+
+  private async handleRules(chatId: number, lang: Language) {
+    const t = botTranslations[lang];
+    await this.sendMessage(chatId, t.rules);
+  }
+
+  private async handlePlay(chatId: number, lang: Language) {
+    const t = botTranslations[lang];
+    await this.sendMessage(chatId, t.play.title, {
+      reply_markup: {
+        inline_keyboard: [[
           {
-            text: '🎮 Open Game',
+            text: t.play.button,
             web_app: { url: this.frontendUrl }
           }
         ]]
@@ -409,17 +386,18 @@ Click the button below to open the 1K Dream Lottery app! 🚀`;
     });
   }
 
-  private async handleRound(chatId: number, telegramId: string) {
+  private async handleRound(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first to create your account.');
+        await this.sendMessage(chatId, t.round.userNotFound);
         return;
       }
 
       const round = await this.lotteryService.getActiveRound();
       if (!round) {
-        await this.sendMessage(chatId, '⏳ No active round at the moment. Check back soon!');
+        await this.sendMessage(chatId, t.round.noActiveRound);
         return;
       }
 
@@ -435,67 +413,71 @@ Click the button below to open the 1K Dream Lottery app! 🚀`;
       });
       const userStake = userBets.reduce((sum, bet) => sum + Number(bet.amount), 0);
 
-      const message = `🎯 <b>Current Round #${round.roundNumber}</b>
+      const message = `${t.round.title} #${round.roundNumber}</b>
 
-⏰ <b>Time remaining:</b> ${minutes}:${seconds.toString().padStart(2, '0')}
-💰 <b>Prize Pool:</b> ${Number(round.totalPool).toLocaleString()} Ks
-🏆 <b>Winner Pool:</b> ${Number(round.winnerPool).toLocaleString()} Ks (90%)
+${t.round.timeRemaining} ${minutes}:${seconds.toString().padStart(2, '0')}
+${t.round.prizePool} ${Number(round.totalPool).toLocaleString()} Ks
+${t.round.winnerPool} ${Number(round.winnerPool).toLocaleString()} Ks (90%)
 
-💵 <b>Your stake:</b> ${userStake.toLocaleString()} Ks
+${t.round.yourStake} ${userStake.toLocaleString()} Ks
 
 Use /play to place bets! 🎲`;
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
       this.logger.error('[TELEGRAM BOT] Error in handleRound:', error);
-      await this.sendMessage(chatId, '❌ Error fetching round info. Please try again.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.round.error);
     }
   }
 
-  private async handlePool(chatId: number, telegramId: string) {
+  private async handlePool(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first.');
+        await this.sendMessage(chatId, t.pool.userNotFound);
         return;
       }
 
       const round = await this.lotteryService.getActiveRound();
       if (!round) {
-        await this.sendMessage(chatId, '⏳ No active round at the moment.');
+        await this.sendMessage(chatId, t.pool.noActiveRound);
         return;
       }
 
       const adminFee = Number(round.totalPool) * 0.1;
       const winnerPool = Number(round.winnerPool);
 
-      const message = `💰 <b>Prize Pool</b>
+      const message = `${t.pool.title}
 
-💵 <b>Total Pool:</b> ${Number(round.totalPool).toLocaleString()} Ks
-🏆 <b>Winner Pool:</b> ${winnerPool.toLocaleString()} Ks (90%)
-⚙️ <b>Admin Fee:</b> ${adminFee.toLocaleString()} Ks (10%)
+${t.pool.totalPool} ${Number(round.totalPool).toLocaleString()} Ks
+${t.pool.winnerPool} ${winnerPool.toLocaleString()} Ks (90%)
+${t.pool.adminFee} ${adminFee.toLocaleString()} Ks (10%)
 
-Round #${round.roundNumber}
+${t.pool.round} #${round.roundNumber}
 
 Use /play to join! 🎯`;
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
-      await this.sendMessage(chatId, '❌ Error fetching pool info.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.pool.error);
     }
   }
 
-  private async handleMyBets(chatId: number, telegramId: string) {
+  private async handleMyBets(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first.');
+        await this.sendMessage(chatId, t.myBets.userNotFound);
         return;
       }
 
       const round = await this.lotteryService.getActiveRound();
       if (!round) {
-        await this.sendMessage(chatId, '⏳ No active round at the moment.');
+        await this.sendMessage(chatId, t.myBets.noActiveRound);
         return;
       }
 
@@ -505,16 +487,16 @@ Use /play to join! 🎯`;
       });
 
       if (bets.length === 0) {
-        await this.sendMessage(chatId, `📝 <b>No bets in current round</b>\n\nRound #${round.roundNumber}\n\nUse /play to place your first bet! 🎲`);
+        await this.sendMessage(chatId, `${t.myBets.noBets}\n\n${t.round.title} #${round.roundNumber}\n\nUse /play to place your first bet! 🎲`);
         return;
       }
 
       const totalStake = bets.reduce((sum, bet) => sum + Number(bet.amount), 0);
       const blocks = [...new Set(bets.map(bet => bet.blockNumber))].sort((a, b) => a - b);
 
-      let message = `📊 <b>Your Bets - Round #${round.roundNumber}</b>\n\n`;
-      message += `💵 <b>Total Stake:</b> ${totalStake.toLocaleString()} Ks\n`;
-      message += `🎯 <b>Blocks:</b> ${blocks.join(', ')}\n\n`;
+      let message = `${t.myBets.title} - ${t.round.title} #${round.roundNumber}</b>\n\n`;
+      message += `${t.myBets.totalStake} ${totalStake.toLocaleString()} Ks\n`;
+      message += `${t.myBets.blocks} ${blocks.join(', ')}\n\n`;
       message += `<b>Bets:</b>\n`;
 
       bets.forEach((bet, index) => {
@@ -523,34 +505,36 @@ Use /play to join! 🎯`;
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
-      await this.sendMessage(chatId, '❌ Error fetching your bets.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.myBets.error);
     }
   }
 
-  private async handleHistory(chatId: number, telegramId: string) {
+  private async handleHistory(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first.');
+        await this.sendMessage(chatId, t.history.userNotFound);
         return;
       }
 
       const bets = await this.betsService.getUserBets(user.id, 10);
 
       if (bets.length === 0) {
-        await this.sendMessage(chatId, '📝 <b>No betting history</b>\n\nUse /play to place your first bet! 🎲');
+        await this.sendMessage(chatId, `${t.history.noHistory}\n\nUse /play to place your first bet! 🎲`);
         return;
       }
 
-      let message = `📜 <b>Your Betting History</b>\n\n`;
+      let message = `${t.history.title}\n\n`;
 
       for (const bet of bets) {
         const round = await this.roundsRepository.findOne({
           where: { id: bet.lotteryRoundId },
         });
         
-        const payout = bet.payout ? `💰 ${Number(bet.payout).toLocaleString()} Ks` : '⏳ Pending';
-        const status = bet.payout ? '✅ Won' : round?.winningBlock === bet.blockNumber ? '🎯 Winning!' : round?.status === LotteryRoundStatus.COMPLETED ? '❌ Lost' : '⏳ Pending';
+        const payout = bet.payout ? `💰 ${Number(bet.payout).toLocaleString()} Ks` : t.history.pending;
+        const status = bet.payout ? t.history.won : round?.winningBlock === bet.blockNumber ? t.history.winning : round?.status === LotteryRoundStatus.COMPLETED ? t.history.lost : t.history.pending;
         
         message += `Round #${round?.roundNumber || 'N/A'}\n`;
         message += `Block ${bet.blockNumber}: ${Number(bet.amount).toLocaleString()} Ks\n`;
@@ -560,12 +544,14 @@ Use /play to join! 🎯`;
       await this.sendMessage(chatId, message);
     } catch (error: any) {
       this.logger.error('[TELEGRAM BOT] Error in handleHistory:', error);
-      await this.sendMessage(chatId, '❌ Error fetching history.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.history.error);
     }
   }
 
-  private async handleWinners(chatId: number) {
+  private async handleWinners(chatId: number, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const rounds = await this.roundsRepository.find({
         where: { status: LotteryRoundStatus.COMPLETED },
         order: { drawTime: 'DESC' },
@@ -573,11 +559,11 @@ Use /play to join! 🎯`;
       });
 
       if (rounds.length === 0) {
-        await this.sendMessage(chatId, '📝 <b>No completed rounds yet</b>\n\nBe the first winner! Use /play to start! 🎯');
+        await this.sendMessage(chatId, `${t.winners.noCompletedRounds}\n\nBe the first winner! Use /play to start! 🎯`);
         return;
       }
 
-      let message = `🏆 <b>Recent Winners</b>\n\n`;
+      let message = `${t.winners.title}\n\n`;
 
       rounds.forEach((round, index) => {
         const drawTime = new Date(round.drawTime).toLocaleDateString('en-US', {
@@ -588,152 +574,160 @@ Use /play to join! 🎯`;
         });
 
         message += `${index + 1}. Round #${round.roundNumber}\n`;
-        message += `   🎯 Winning Block: ${round.winningBlock}\n`;
-        message += `   💰 Prize Pool: ${Number(round.winnerPool).toLocaleString()} Ks\n`;
+        message += `   ${t.winners.winningBlock} ${round.winningBlock}\n`;
+        message += `   ${t.winners.prizePool} ${Number(round.winnerPool).toLocaleString()} Ks\n`;
         message += `   📅 ${drawTime}\n\n`;
       });
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
       this.logger.error('[TELEGRAM BOT] Error in handleWinners:', error);
-      await this.sendMessage(chatId, '❌ Error fetching winners.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.winners.error);
     }
   }
 
-  private async handleBalance(chatId: number, telegramId: string) {
+  private async handleBalance(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first to create your account.');
+        await this.sendMessage(chatId, t.balance.userNotFound);
         return;
       }
 
-      const message = `💰 <b>Your Balance</b>
+      const message = `${t.balance.title}
 
-💵 <b>KYAT:</b> ${Number(user.kyatBalance).toLocaleString()} Ks
-💎 <b>Points:</b> ${Number(user.points).toLocaleString()}
+${t.balance.kyat} ${Number(user.kyatBalance).toLocaleString()} Ks
+${t.balance.points} ${Number(user.points).toLocaleString()}
 
-<b>Available for withdrawal:</b> ${Number(user.kyatBalance).toLocaleString()} Ks
+${t.balance.available} ${Number(user.kyatBalance).toLocaleString()} Ks
 
 Use /deposit to add funds or /withdraw to withdraw! 💸`;
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
       this.logger.error('[TELEGRAM BOT] Error in handleBalance:', error);
-      await this.sendMessage(chatId, '❌ Error fetching balance.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.balance.error);
     }
   }
 
-  private async handleDeposit(chatId: number, telegramId: string) {
+  private async handleDeposit(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first.');
+        await this.sendMessage(chatId, t.deposit.userNotFound);
         return;
       }
 
-      const message = `💵 <b>Deposit Instructions</b>
+      const message = `${t.deposit.title}
 
-<b>Method:</b> TON USDT
+${t.deposit.method}
 
-<b>Steps:</b>
-1. Open the app using /play
-2. Go to Deposit section
-3. Enter amount in USDT
-4. Send USDT to the provided TON address
-5. Wait for confirmation (usually within minutes)
+${t.deposit.steps}
+${t.deposit.step1}
+${t.deposit.step2}
+${t.deposit.step3}
+${t.deposit.step4}
+${t.deposit.step5}
 
-<b>Exchange Rate:</b>
-• 1 USDT = 5,000 KYAT
-• Minimum deposit: 0.2 USDT (1,000 KYAT)
+${t.deposit.exchangeRate}
+${t.deposit.rate}
 
-<b>Note:</b> Make sure to use the address shown in the app for your deposit to be credited automatically.
+${t.deposit.note}
 
 Use /play to deposit now! 💰`;
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
-      await this.sendMessage(chatId, '❌ Error. Please try again.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.deposit.error);
     }
   }
 
-  private async handleWithdraw(chatId: number) {
-    const message = `💸 <b>Withdrawal Information</b>
+  private async handleWithdraw(chatId: number, lang: Language) {
+    const t = botTranslations[lang];
+    const message = `${t.withdraw.title}
 
-<b>Limits:</b>
-• Minimum: 5,000 KYAT (1 USDT)
-• Daily maximum: 500,000 KYAT per user
-• Processing time: 1 hour after request
+${t.withdraw.limits}
+${t.withdraw.minimum}
+${t.withdraw.dailyMax}
+${t.withdraw.processingTime}
 
-<b>Process:</b>
-1. Open the app using /play
-2. Go to Withdraw section
-3. Enter amount and TON address
-4. Submit withdrawal request
-5. Wait 1 hour for processing
-6. Funds will be sent to your TON address
+${t.withdraw.process}
+${t.withdraw.step1}
+${t.withdraw.step2}
+${t.withdraw.step3}
+${t.withdraw.step4}
+${t.withdraw.step5}
+${t.withdraw.step6}
 
-<b>Exchange Rate:</b>
-• 5,000 KYAT = 1 USDT
+${t.withdraw.exchangeRate}
+${t.withdraw.rate}
 
-<b>Important:</b>
-• Balance is deducted immediately when you request withdrawal
-• If rejected, balance will be refunded
-• Make sure your TON address is correct!
+${t.withdraw.important}
+${t.withdraw.important1}
+${t.withdraw.important2}
+${t.withdraw.important3}
 
 Use /play to withdraw now! 💰`;
 
     await this.sendMessage(chatId, message);
   }
 
-  private async handlePoints(chatId: number, telegramId: string) {
+  private async handlePoints(chatId: number, telegramId: string, lang: Language) {
     try {
+      const t = botTranslations[lang];
       const user = await this.usersService.findByTelegramId(telegramId);
       if (!user) {
-        await this.sendMessage(chatId, '❌ User not found. Please open the app first.');
+        await this.sendMessage(chatId, t.points.userNotFound);
         return;
       }
 
-      const message = `💎 <b>Points System</b>
+      const message = `${t.points.title}
 
-<b>Your Points:</b> ${Number(user.points).toLocaleString()}
+${t.points.yourPoints} ${Number(user.points).toLocaleString()}
 
-<b>How to Earn:</b>
-• Bet 1,000 KYAT = Earn 10 points
-• Bet 5,000 KYAT = Earn 50 points
-• Bet 10,000 KYAT = Earn 100 points
+${t.points.howToEarn}
+${t.points.earn1}
+${t.points.earn2}
+${t.points.earn3}
 
-<b>Redemption:</b>
-• 1,000 points = 1,000 KYAT (1:1 ratio)
-• Minimum redemption: 10,000 points
-• Redeem anytime in the app
+${t.points.redemption}
+${t.points.ratio}
+${t.points.minimum}
+${t.points.redeemAnytime}
 
-<b>Example:</b>
-• You have 15,000 points
-• Redeem 12,000 points = Get 12,000 KYAT
-• Remaining: 3,000 points
+${t.points.example}
+${t.points.example1}
+${t.points.example2}
+${t.points.example3}
 
 Use /play to redeem your points! 🎁`;
 
       await this.sendMessage(chatId, message);
     } catch (error: any) {
-      await this.sendMessage(chatId, '❌ Error fetching points.');
+      const t = botTranslations[lang];
+      await this.sendMessage(chatId, t.points.error);
     }
   }
 
-  private async handleSupport(chatId: number) {
-    const message = `🆘 <b>Contact Support</b>
+  private async handleSupport(chatId: number, lang: Language) {
+    const t = botTranslations[lang];
+    const message = `${t.support.title}
 
-Need help? Our support team is here for you!
+${t.support.needHelp}
 
-<b>Support Channels:</b>
-• Telegram: @onekadmin
-• Open app and use "Contact Support" button
+${t.support.channels}
+${t.support.telegram}
+${t.support.openApp}
 
-<b>Common Issues:</b>
-• Deposit not credited? Contact support with TX hash
-• Withdrawal delayed? Check status in app
-• Account issues? Contact support
+${t.support.commonIssues}
+${t.support.issue1}
+${t.support.issue2}
+${t.support.issue3}
 
 We're here to help! 💬`;
 
@@ -741,7 +735,7 @@ We're here to help! 💬`;
       reply_markup: {
         inline_keyboard: [[
           {
-            text: '💬 Contact Support',
+            text: t.support.contactButton,
             url: 'https://t.me/onekadmin'
           }
         ]]

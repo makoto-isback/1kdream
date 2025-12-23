@@ -43,6 +43,9 @@ export class User {
   @Column('timestamp', { nullable: true })
   activatedAt: Date; // When user paid activation fee
 
+  @Column({ default: 'en' })
+  language: string; // 'en' or 'my' - user's preferred language for bot
+
   @OneToMany(() => Bet, (bet) => bet.user)
   bets: Bet[];
 

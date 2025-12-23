@@ -30,6 +30,7 @@ export class UsersService {
         username: data.username,
         kyatBalance: 0,
         points: 0,
+        language: 'en', // Default language
       });
       await this.usersRepository.save(user);
     } else {
@@ -105,5 +106,20 @@ export class UsersService {
       isActivated: user.isActivated,
       activatedAt: user.activatedAt,
     };
+  }
+
+  async updateLanguage(userId: string, language: string): Promise<User> {
+    const user = await this.findOne(userId);
+    user.language = language;
+    return this.usersRepository.save(user);
+  }
+
+  async updateLanguageByTelegramId(telegramId: string, language: string): Promise<User | null> {
+    const user = await this.findByTelegramId(telegramId);
+    if (!user) {
+      return null;
+    }
+    user.language = language;
+    return this.usersRepository.save(user);
   }
 }
