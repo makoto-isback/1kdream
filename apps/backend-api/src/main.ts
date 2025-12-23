@@ -131,8 +131,9 @@ async function bootstrap() {
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        // Block unauthorized origins - don't set CORS headers
         console.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+        callback(null, false); // Return false to block, not an error
       }
     },
     credentials: true,
