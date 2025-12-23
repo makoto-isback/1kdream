@@ -1,19 +1,35 @@
-import { Controller, Post, Body, Get, HttpCode, Logger, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, Get, HttpCode, Logger, UseGuards, Request, Headers, UnauthorizedException } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { TelegramBotService } from '../../services/telegram-bot.service';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('telegram')
 export class TelegramBotController {
   private readonly logger = new Logger(TelegramBotController.name);
 
-  constructor(private telegramBotService: TelegramBotService) {}
+  constructor(
+    private telegramBotService: TelegramBotService,
+    private configService: ConfigService,
+  ) {}
 
   @Post('webhook')
   @HttpCode(200)
-  async handleWebhook(@Body() body: any) {
+  async handleWebhook(
+    @Body() body: any,
+    @Headers('x-telegram-bot-api-secret-token') secretToken: string,
+  ) {
+    // Verify webhook secret token if configured
+    const expectedSecret = this.configService.get<string>('TELEGRAM_WEBHOOK_SECRET');
+    if (expectedSecret) {
+      if (!secretToken || secretToken !== expectedSecret) {
+        this.logger.warn(`[WEBHOOK] ❌ Invalid secret token - request rejected`);
+        throw new UnauthorizedException('Invalid webhook secret token');
+      }
+      this.logger.log(`[WEBHOOK] ✅ Secret token verified`);
+    }
+
     this.logger.log(`[WEBHOOK] 📨 Received update from Telegram`);
-    this.logger.log(`[WEBHOOK] Update data: ${JSON.stringify(body)}`);
     try {
       await this.telegramBotService.handleUpdate(body);
       this.logger.log(`[WEBHOOK] ✅ Update processed successfully`);

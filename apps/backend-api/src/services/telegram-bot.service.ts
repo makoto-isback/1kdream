@@ -70,11 +70,24 @@ export class TelegramBotService implements OnModuleInit {
       const webhookPath = `${this.webhookUrl}/telegram/webhook`;
       const url = `https://api.telegram.org/bot${this.botToken}/setWebhook`;
       
-      this.logger.log(`[TELEGRAM BOT] Setting webhook to: ${webhookPath}`);
+      // Get webhook secret if configured
+      const webhookSecret = this.configService.get<string>('TELEGRAM_WEBHOOK_SECRET');
       
-      const response = await axios.post(url, {
+      this.logger.log(`[TELEGRAM BOT] Setting webhook to: ${webhookPath}`);
+      if (webhookSecret) {
+        this.logger.log(`[TELEGRAM BOT] Using webhook secret token for verification`);
+      }
+      
+      const webhookData: any = {
         url: webhookPath,
-      });
+      };
+      
+      // Add secret token if configured
+      if (webhookSecret) {
+        webhookData.secret_token = webhookSecret;
+      }
+      
+      const response = await axios.post(url, webhookData);
       
       if (response.data.ok) {
         this.logger.log(`[TELEGRAM BOT] ✅ Webhook set successfully: ${webhookPath}`);

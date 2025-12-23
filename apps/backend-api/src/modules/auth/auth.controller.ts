@@ -39,7 +39,12 @@ export class AuthController {
         throw new UnauthorizedException('Invalid Telegram init data');
       }
 
-      const user = await this.authService.validateTelegramUser(parsedData);
+      // Pass original initData string if available for hash verification
+      const originalInitData = body.initData && typeof body.initData === 'string' 
+        ? body.initData 
+        : null;
+      
+      const user = await this.authService.validateTelegramUser(parsedData, originalInitData);
       const result = await this.authService.login(user);
 
       // Log JWT issuance for debugging
