@@ -1,4 +1,6 @@
-import { Controller, Post, Body, Get, HttpCode, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Get, HttpCode, Logger, UseGuards, Request } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
 import { TelegramBotService } from '../../services/telegram-bot.service';
 
 @Controller('telegram')
@@ -34,12 +36,16 @@ export class TelegramBotController {
   }
 
   @Post('set-webhook')
-  async setWebhook() {
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async setWebhook(@Request() req) {
+    this.logger.log(`[ADMIN] Admin ${req.user.id} triggered webhook setup`);
     return await this.telegramBotService.setWebhook();
   }
 
   @Post('set-commands')
-  async setCommands() {
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async setCommands(@Request() req) {
+    this.logger.log(`[ADMIN] Admin ${req.user.id} triggered command registration`);
     return await this.telegramBotService.setBotCommands();
   }
 }

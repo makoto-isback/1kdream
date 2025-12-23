@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -31,6 +33,23 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 900000, // 15 minutes in milliseconds
+        limit: 100, // 100 requests per 15 minutes for authenticated endpoints
+      },
+      {
+        name: 'strict',
+        ttl: 900000, // 15 minutes
+        limit: 20, // 20 requests per 15 minutes for unauthenticated endpoints
+      },
+      {
+        name: 'auth',
+        ttl: 900000, // 15 minutes
+        limit: 5, // 5 login attempts per 15 minutes to prevent brute force
+      },
+    ]),
     ScheduleModule.forRoot(),
     DatabaseModule,
     AuthModule,
@@ -58,6 +77,11 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
     StartupInitJob,
     UsdtWithdrawalExecutionJob,
     WithdrawalReadyNotificationJob,
+    // Apply rate limiting globally (can be overridden per route)
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

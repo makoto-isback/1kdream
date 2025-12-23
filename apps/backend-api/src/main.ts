@@ -1,6 +1,7 @@
 import * as dotenv from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './filters/http-exception.filter';
 
@@ -79,6 +80,14 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
   
+  // Security headers (Helmet)
+  // Configured to work with CORS and Telegram WebApp
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disable CSP to allow Telegram WebApp flexibility
+    crossOriginEmbedderPolicy: false, // Allow embedding for Telegram
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin resources
+  }));
+  
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     transform: true,
@@ -90,7 +99,7 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // CORS configuration for Telegram Mini App
-  // Must allow all origins because Telegram WebApp can be opened from various domains
+  // Restricted to specific allowed origins for security
   // Credentials are required for JWT token cookies (if used) and Authorization headers
   app.enableCors({
     origin: (origin, callback) => {
@@ -100,10 +109,31 @@ async function bootstrap() {
         return callback(null, true);
       }
       
-      // In production, you can restrict to specific domains if needed
-      // For Telegram Mini App, we need to allow all origins
-      // Telegram WebApp can be opened from various domains (web.telegram.org, etc.)
-      callback(null, true);
+      // List of allowed origins
+      const allowedOrigins = [
+        'https://web.telegram.org',
+        'https://telegram.org',
+        'https://webk.telegram.org', // Alternative Telegram Web domain
+        process.env.FRONTEND_URL, // User's frontend URL from environment
+      ].filter(Boolean); // Remove any undefined values
+      
+      // In development, also allow localhost
+      if (process.env.NODE_ENV === 'development') {
+        allowedOrigins.push(
+          'http://localhost:5173',
+          'http://localhost:3000',
+          'http://127.0.0.1:5173',
+          'http://127.0.0.1:3000',
+        );
+      }
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Blocked request from unauthorized origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
