@@ -76,9 +76,25 @@ const LotteryPage: React.FC = () => {
   const [hasActiveAutoBuy, setHasActiveAutoBuy] = useState(false);
   const [recentWinnersRounds, setRecentWinnersRounds] = useState<WinnerRound[]>([]);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [errorBannerVisible, setErrorBannerVisible] = useState(false);
 
   // Countdown is ONLY for display - no popup triggering logic
   const { countdown } = useCountdown(activeRound?.drawTime || null);
+
+  // Auto-show error banner when error appears (only if no cached round)
+  useEffect(() => {
+    if (dataError && !activeRound) {
+      setErrorBannerVisible(true);
+      // Auto-dismiss after 10 seconds
+      const timer = setTimeout(() => {
+        setErrorBannerVisible(false);
+      }, 10000);
+      return () => clearTimeout(timer);
+    } else if (!dataError || activeRound) {
+      // Hide error banner when error clears or we have round data
+      setErrorBannerVisible(false);
+    }
+  }, [dataError, activeRound]);
 
   // Load initial recent winners on mount (fallback if no socket events yet)
   useEffect(() => {
@@ -433,19 +449,31 @@ const LotteryPage: React.FC = () => {
                     </div>
 
                     {/* Non-blocking error banner - blocks still render below */}
-                    {dataError && (
+                    {/* Only show error if we don't have cached round data AND error exists */}
+                    {dataError && !activeRound && errorBannerVisible && (
                       <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 flex items-center justify-between">
                         <span className="mr-2">
                           {language === 'en'
                             ? 'Unable to load round data. Blocks are still available.'
                             : 'ပွဲစဉ်ဒေတာ မဖတ်ရနိုင်သေးပါ။ နံပါတ်များ ဆက်လက်ရရှိနိုင်ပါသည်။'}
                         </span>
-                        <button
-                          onClick={() => refetch()}
-                          className="text-[11px] font-semibold px-2 py-1 rounded bg-red-500/20 hover:bg-red-500/30 transition-colors"
-                        >
-                          {language === 'en' ? 'Retry' : 'ပြန်ဖတ်မည်'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setErrorBannerVisible(false);
+                              refetch();
+                            }}
+                            className="text-[11px] font-semibold px-2 py-1 rounded bg-red-500/20 hover:bg-red-500/30 transition-colors"
+                          >
+                            {language === 'en' ? 'Retry' : 'ပြန်ဖတ်မည်'}
+                          </button>
+                          <button
+                            onClick={() => setErrorBannerVisible(false)}
+                            className="text-[11px] font-semibold px-2 py-1 rounded bg-red-500/20 hover:bg-red-500/30 transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
                     )}
                     

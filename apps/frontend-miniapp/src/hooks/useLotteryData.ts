@@ -21,13 +21,15 @@ export const useLotteryData = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      setError(null);
-
+      
       // Fetch active round - don't require auth for this
       const round = await lotteryService.getActiveRound();
-      setActiveRound(round);
-
+      
+      // Only clear error if we successfully got a round
       if (round) {
+        setError(null);
+        setActiveRound(round);
+
         // Get round stats to populate buyers and totalKyat per block
         // This is optional - if it fails, blocks still render with default stats
         try {
@@ -68,10 +70,26 @@ export const useLotteryData = () => {
       } else {
         // No active round - clear stats, blocks still render
         setBlockStats(new Map());
+        // Only set error if we don't have a cached round
+        // If we already have activeRound, don't show error (might be temporary backend issue)
+        if (!activeRound) {
+          setError('No active round available');
+        } else {
+          // We have cached data, clear error
+          setError(null);
+        }
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load lottery data');
-      console.error('[useLotteryData] Error fetching lottery data:', err);
+      // Only set error if we don't have cached round data
+      // If we already have activeRound, this is a non-critical refetch failure
+      if (!activeRound) {
+        setError(err.response?.data?.message || 'Failed to load lottery data');
+        console.error('[useLotteryData] Error fetching lottery data:', err);
+      } else {
+        // We have cached data, don't show error for refetch failures
+        console.warn('[useLotteryData] Refetch failed but using cached data:', err);
+        setError(null);
+      }
       // Don't throw - blocks still render even if API fails
     } finally {
       setLoading(false);
