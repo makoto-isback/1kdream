@@ -340,11 +340,15 @@ export class TelegramBotService implements OnModuleInit {
     // If user already has a language preference, show welcome message
     if (telegramId) {
       const user = await this.usersService.findByTelegramId(telegramId);
-      if (user && user.language) {
+      // Only skip language selection if language is explicitly set and not empty
+      if (user && user.language && user.language.trim() !== '') {
         const lang = user.language as Language;
-        const t = botTranslations[lang];
-        await this.sendMessage(chatId, t.welcome);
-        return;
+        // Validate language is either 'en' or 'my'
+        if (lang === 'en' || lang === 'my') {
+          const t = botTranslations[lang];
+          await this.sendMessage(chatId, t.welcome);
+          return;
+        }
       }
     }
 
