@@ -47,9 +47,15 @@ export class AdminController {
   }
 
   @Get('withdrawals')
-  async getAllWithdrawals(@Request() req) {
+  async getAllWithdrawals(
+    @Request() req,
+    @Query('includeCompleted') includeCompleted?: string,
+  ) {
     // AdminGuard already verified admin access
-    return this.adminService.getAllWithdrawals();
+    // By default, exclude completed withdrawals to keep UI clean
+    // Add ?includeCompleted=true to see all withdrawals including completed ones
+    const include = includeCompleted === 'true';
+    return this.adminService.getAllWithdrawals(include);
   }
 
   @Get('withdrawals/pending')

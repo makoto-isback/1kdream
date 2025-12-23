@@ -107,8 +107,14 @@ export class AdminService {
     }
   }
 
-  async getAllWithdrawals() {
-    return this.withdrawalsService.getAllWithdrawals();
+  async getAllWithdrawals(includeCompleted: boolean = false) {
+    if (includeCompleted) {
+      // Return all withdrawals including completed
+      return this.withdrawalsService.getAllWithdrawals();
+    } else {
+      // Return only non-completed withdrawals (pending, processing, rejected)
+      return this.withdrawalsService.getNonCompletedWithdrawals();
+    }
   }
 
   async getPendingWithdrawals() {

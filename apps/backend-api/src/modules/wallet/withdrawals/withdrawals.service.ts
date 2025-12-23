@@ -399,6 +399,18 @@ export class WithdrawalsService {
     });
   }
 
+  async getNonCompletedWithdrawals(): Promise<Withdrawal[]> {
+    return this.withdrawalsRepository.find({
+      where: [
+        { status: WithdrawalStatus.PENDING },
+        { status: WithdrawalStatus.PROCESSING },
+        { status: WithdrawalStatus.REJECTED },
+      ],
+      order: { createdAt: 'DESC' },
+      relations: ['user'],
+    });
+  }
+
   async getPendingWithdrawals(): Promise<Withdrawal[]> {
     return this.withdrawalsRepository.find({
       where: { status: WithdrawalStatus.PENDING },
