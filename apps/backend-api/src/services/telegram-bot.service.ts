@@ -337,22 +337,8 @@ export class TelegramBotService implements OnModuleInit {
 
   // Command handlers
   private async handleStart(chatId: number, telegramId?: string) {
-    // If user already has a language preference, show welcome message
-    if (telegramId) {
-      const user = await this.usersService.findByTelegramId(telegramId);
-      // Only skip language selection if language is explicitly set and not empty
-      if (user && user.language && user.language.trim() !== '') {
-        const lang = user.language as Language;
-        // Validate language is either 'en' or 'my'
-        if (lang === 'en' || lang === 'my') {
-          const t = botTranslations[lang];
-          await this.sendMessage(chatId, t.welcome);
-          return;
-        }
-      }
-    }
-
-    // Show language selection for new users or users without language preference
+    // Always show language selection on /start
+    // This allows users to change their language preference anytime
     const t = botTranslations.en; // Use English for language selection UI
     const message = `${t.languageSelection.title}\n\n${t.languageSelection.chooseLanguage}\n\n${t.languageSelection.english}\n${t.languageSelection.burmese}`;
 
