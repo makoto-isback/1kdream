@@ -333,11 +333,26 @@ const LotteryPage: React.FC = () => {
         setAutoBuyRefreshKey(prev => prev + 1);
       }
 
-      // Refresh data
+      // Refresh user data first (critical - needed for balance update)
       await refreshUser();
-      await refetch();
+      
+      // Clear selection immediately after successful bet
       setSelectedIds([]);
+      
+      // Refetch lottery data in background - don't block on errors
+      // Use setTimeout to prevent blocking the UI and avoid error propagation
+      setTimeout(async () => {
+        try {
+          await refetch();
+        } catch (err) {
+          // Silently fail - bet already succeeded, this is just for UI refresh
+          // The error banner will auto-clear on next successful refetch (every 30s)
+          console.warn('[LotteryPage] Refetch failed after bet (non-critical):', err);
+        }
+      }, 100);
+      
     } catch (error: any) {
+      // Only show error if bet placement actually failed
       setBuyError(
         error.response?.data?.message || 
         (language === 'my' ? 'ဝယ်ယူမှု မအောင်မြင်ပါ' : 'Purchase failed')
@@ -403,7 +418,7 @@ const LotteryPage: React.FC = () => {
                 <div className="flex-1 mb-8 lg:mb-0">
                     <div className="flex items-center justify-between mb-6 px-1">
                         <h1 className="text-[28px] font-extrabold italic tracking-tight text-white">
-                            {TRANSLATIONS.app_title[language]}
+                            {(TRANSLATIONS.app_title as { en: string; my: string })[language] || '1K Dream'}
                         </h1>
                         <div className="flex items-center text-[11px] font-semibold text-ios-green bg-ios-green/10 px-2 py-1 rounded-md">
                             <div className="w-1.5 h-1.5 rounded-full bg-ios-green animate-pulse mr-2" />
