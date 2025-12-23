@@ -45,7 +45,7 @@ const STATIC_BLOCKS: NumberStats[] = Array.from({ length: 25 }, (_, i) => ({
 const LotteryPage: React.FC = () => {
   const { user, refreshUser, isAuthReady } = useAuth();
   const { activeRound, blockStats, userStake, loading: dataLoading, error: dataError, refetch } = useLotteryData();
-  const [language, setLanguage] = useState<Language>('my');
+  const [language, setLanguage] = useState<Language>('en');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   
   // Merge static blocks with API stats (stats are optional overlays)
