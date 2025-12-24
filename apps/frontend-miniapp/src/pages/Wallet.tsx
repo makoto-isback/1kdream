@@ -69,7 +69,11 @@ export default function Wallet() {
   const loadWithdrawals = async () => {
     try {
       const response = await api.get('/withdrawals/my');
-      setWithdrawals(response.data);
+      // Sort by date descending (most recent first) to ensure we show the latest one
+      const sorted = response.data.sort((a: Withdrawal, b: Withdrawal) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setWithdrawals(sorted);
     } catch (error) {
       console.error('Error loading withdrawals:', error);
     }
@@ -291,28 +295,32 @@ export default function Wallet() {
                 <div className="empty">မှတ်တမ်း မရှိပါ</div>
               ) : (
                 <div className="withdrawals">
-                  {withdrawals.map((withdrawal) => (
-                    <div key={withdrawal.id} className="withdrawal-item">
-                      <div className="withdrawal-info">
-                        <span>{Number(withdrawal.kyatAmount).toLocaleString()} KYAT</span>
-                        <span>= {Number(withdrawal.usdtAmount).toFixed(4)} USDT</span>
-                      </div>
-                      <div className="withdrawal-details">
-                        <div className="address">{withdrawal.tonAddress}</div>
-                        <div className="withdrawal-status">
-                          <span className={`status status-${withdrawal.status}`}>
-                            {withdrawal.status === 'pending' ? t('withdraw.pending') :
-                             withdrawal.status === 'processing' ? t('withdraw.processing') :
-                             withdrawal.status === 'completed' ? t('withdraw.completed') :
-                             t('withdraw.rejected')}
-                          </span>
-                          <span className="date">
-                            {new Date(withdrawal.createdAt).toLocaleDateString('my-MM')}
-                          </span>
+                  {/* Show only the most recent withdrawal */}
+                  {(() => {
+                    const mostRecent = withdrawals[0]; // Assuming withdrawals are sorted by date descending
+                    return (
+                      <div key={mostRecent.id} className="withdrawal-item">
+                        <div className="withdrawal-info">
+                          <span>{Number(mostRecent.kyatAmount).toLocaleString()} KYAT</span>
+                          <span>= {Number(mostRecent.usdtAmount).toFixed(4)} USDT</span>
+                        </div>
+                        <div className="withdrawal-details">
+                          <div className="address">{mostRecent.tonAddress}</div>
+                          <div className="withdrawal-status">
+                            <span className={`status status-${mostRecent.status}`}>
+                              {mostRecent.status === 'pending' ? t('withdraw.pending') :
+                               mostRecent.status === 'processing' ? t('withdraw.processing') :
+                               mostRecent.status === 'completed' ? t('withdraw.completed') :
+                               t('withdraw.rejected')}
+                            </span>
+                            <span className="date">
+                              {new Date(mostRecent.createdAt).toLocaleDateString('my-MM')}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })()}
                 </div>
               )}
             </div>
