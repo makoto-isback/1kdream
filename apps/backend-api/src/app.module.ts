@@ -37,12 +37,17 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
       {
         name: 'default',
         ttl: 60000, // 1 minute in milliseconds
-        limit: 60, // 60 requests per minute for authenticated endpoints (1 req/sec average)
+        limit: 300, // 300 requests per minute for authenticated endpoints (5 req/sec average)
       },
       {
         name: 'strict',
         ttl: 60000, // 1 minute
-        limit: 120, // 120 requests per minute for public read-only endpoints (2 req/sec average)
+        limit: 200, // 200 requests per minute for public read-only endpoints (3.3 req/sec average)
+      },
+      {
+        name: 'bets',
+        ttl: 60000, // 1 minute
+        limit: 100, // 100 bet placements per minute (allows up to 10 bets at once + refetches)
       },
       {
         name: 'auth',
