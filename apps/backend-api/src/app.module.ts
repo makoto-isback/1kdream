@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -82,10 +83,10 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
     StartupInitJob,
     UsdtWithdrawalExecutionJob,
     WithdrawalReadyNotificationJob,
-    // Apply rate limiting globally (can be overridden per route)
+    // Use custom throttler guard that skips public read-only endpoints
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: CustomThrottlerGuard,
     },
   ],
 })
