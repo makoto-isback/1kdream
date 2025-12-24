@@ -7,6 +7,7 @@ import { UsersModule } from '../users/users.module';
 import { LotteryModule } from '../lottery/lottery.module';
 import { SystemModule } from '../system/system.module';
 import { AuthModule } from '../auth/auth.module';
+import { EventsModule } from '../../gateways/events.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuthModule } from '../auth/auth.module';
     forwardRef(() => LotteryModule),
     SystemModule,
     forwardRef(() => AuthModule),
+    EventsModule,
   ],
   controllers: [BetsController],
   providers: [BetsService],

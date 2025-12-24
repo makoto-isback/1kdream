@@ -24,7 +24,7 @@ import { MyBetsThisRound } from '../components/MyBetsThisRound';
 import AdminPanel from '../components/AdminPanel';
 import { HowItWorksModal } from '../components/HowItWorksModal';
 import api from '../services/api';
-import { socketService, RoundCompletedEvent } from '../services/socket';
+import { socketService, RoundCompletedEvent, UserBalanceUpdatedEvent } from '../services/socket';
 
 /**
  * INVARIANT: This block grid must NEVER depend on backend, auth, wallet, or loading state.
@@ -271,6 +271,17 @@ const LotteryPage: React.FC = () => {
       unsubscribe();
     };
   }, []); // Empty deps - only run once on mount
+
+  // Listen for user:balance:updated events via Socket.IO
+  useEffect(() => {
+    const unsubscribe = socketService.onUserBalanceUpdated((event: UserBalanceUpdatedEvent) => {
+      console.log('[LotteryPage] Received user:balance:updated event', event);
+      // Refresh user data to update balance in UI
+      refreshUser();
+    });
+
+    return unsubscribe;
+  }, [refreshUser]);
 
   const handleToggleNumber = (id: number) => {
     setSelectedIds(prev => 

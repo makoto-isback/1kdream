@@ -11,6 +11,43 @@ export interface RoundCompletedEvent {
   timestamp: string;
 }
 
+export interface BetPlacedEvent {
+  roundId: string;
+  blockNumber: number;
+  amount: number;
+  totalPool: number;
+  winnerPool: number;
+  adminFee: number;
+  blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+  timestamp: string;
+}
+
+export interface RoundStatsUpdatedEvent {
+  roundId: string;
+  blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+  timestamp: string;
+}
+
+export interface ActiveRoundUpdatedEvent {
+  id: string;
+  roundNumber: number;
+  status: string;
+  totalPool: number;
+  winnerPool: number;
+  adminFee: number;
+  totalBets: number;
+  drawTime: string;
+  winningBlock: number | null;
+  drawnAt: string | null;
+  timestamp: string;
+}
+
+export interface UserBalanceUpdatedEvent {
+  kyatBalance: number;
+  points: number;
+  timestamp: string;
+}
+
 export interface UsdtDepositConfirmedEvent {
   depositId: string;
   usdtAmount: number;
@@ -324,6 +361,38 @@ class SocketService {
    */
   onUsdtWithdrawalSent(callback: (data: UsdtWithdrawalSentEvent) => void): () => void {
     const event = 'usdt_withdrawal_sent';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Subscribe to bet:placed events
+   */
+  onBetPlaced(callback: (data: BetPlacedEvent) => void): () => void {
+    const event = 'bet:placed';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Subscribe to round:stats:updated events
+   */
+  onRoundStatsUpdated(callback: (data: RoundStatsUpdatedEvent) => void): () => void {
+    const event = 'round:stats:updated';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Subscribe to round:active:updated events
+   */
+  onActiveRoundUpdated(callback: (data: ActiveRoundUpdatedEvent) => void): () => void {
+    const event = 'round:active:updated';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
+   * Subscribe to user:balance:updated events
+   */
+  onUserBalanceUpdated(callback: (data: UserBalanceUpdatedEvent) => void): () => void {
+    const event = 'user:balance:updated';
     return this.subscribeToEvent(event, callback);
   }
 

@@ -55,11 +55,12 @@ export default function AdminPanel() {
     }
   }, [user?.isAdmin]);
 
-  // Load withdrawals on mount and refresh every 30 seconds
+  // Load withdrawals on mount and refresh every 60 seconds
+  // Reduced polling as WebSocket handles real-time updates
   useEffect(() => {
     if (user?.isAdmin) {
       loadWithdrawals();
-      const interval = setInterval(loadWithdrawals, 30000);
+      const interval = setInterval(loadWithdrawals, 60000); // 60 seconds instead of 30
       return () => clearInterval(interval);
     }
   }, [loadWithdrawals, user?.isAdmin]);

@@ -6,6 +6,7 @@ import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { LotteryService } from '../lottery/lottery.service';
 import { SystemService } from '../system/system.service';
+import { EventsGateway } from '../../gateways/events.gateway';
 
 @Injectable()
 export class BetsService {
@@ -18,6 +19,7 @@ export class BetsService {
     @InjectDataSource()
     private dataSource: DataSource,
     private systemService?: SystemService,
+    private eventsGateway?: EventsGateway,
   ) {}
 
   async placeBet(
@@ -129,6 +131,43 @@ export class BetsService {
       await this.lotteryService.addBetToPool(activeRound.id, amount, queryRunner);
 
       await queryRunner.commitTransaction();
+
+      // Emit real-time events after transaction commits
+      if (this.eventsGateway) {
+        try {
+          // Get updated round data
+          const updatedRound = await this.lotteryService.getActiveRound();
+          if (updatedRound && updatedRound.id === activeRound.id) {
+            // Get updated round stats
+            const roundStats = await this.lotteryService.getRoundStats(activeRound.id);
+            
+            // Emit bet:placed event with updated data
+            this.eventsGateway.emitBetPlaced({
+              roundId: activeRound.id,
+              blockNumber,
+              amount,
+              totalPool: Number(updatedRound.totalPool),
+              winnerPool: Number(updatedRound.winnerPool),
+              adminFee: Number(updatedRound.adminFee),
+              blockStats: roundStats.blockStats,
+            });
+
+            // Emit user balance update
+            const updatedUser = await this.usersService.findOne(userId);
+            if (updatedUser) {
+              this.eventsGateway.emitUserBalanceUpdated(
+                userId,
+                Number(updatedUser.kyatBalance),
+                Number(updatedUser.points)
+              );
+            }
+          }
+        } catch (eventError) {
+          // Don't fail bet placement if event emission fails
+          console.error('[BetsService] Error emitting events after bet placement:', eventError);
+        }
+      }
+
       return savedBet;
     } catch (error) {
       await queryRunner.rollbackTransaction();

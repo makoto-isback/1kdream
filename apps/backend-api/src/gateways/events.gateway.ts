@@ -169,5 +169,98 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   getConnectedCount(): number {
     return this.connectedClients.size;
   }
+
+  /**
+   * Emit bet:placed event to all connected clients (broadcast)
+   * Called after bet is successfully placed
+   */
+  emitBetPlaced(betData: {
+    roundId: string;
+    blockNumber: number;
+    amount: number;
+    totalPool: number;
+    winnerPool: number;
+    adminFee: number;
+    blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+  }) {
+    const eventPayload = {
+      ...betData,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.logger.log(`📡 [EventsGateway] 🚀 EMITTING bet:placed event`);
+    this.logger.log(`📡 [EventsGateway] Round ID: ${betData.roundId}`);
+    this.logger.log(`📡 [EventsGateway] Block: ${betData.blockNumber}, Amount: ${betData.amount}`);
+    
+    // Emit to all connected clients (broadcast)
+    this.server.emit('bet:placed', eventPayload);
+    
+    this.logger.log(`📡 [EventsGateway] ✅ bet:placed event emitted to ${this.connectedClients.size} client(s)`);
+  }
+
+  /**
+   * Emit round:stats:updated event (broadcast)
+   * Called when block statistics change
+   */
+  emitRoundStatsUpdated(roundId: string, blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>) {
+    const eventPayload = {
+      roundId,
+      blockStats,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.logger.log(`📡 [EventsGateway] 🚀 EMITTING round:stats:updated event`);
+    this.logger.log(`📡 [EventsGateway] Round ID: ${roundId}`);
+    
+    // Emit to all connected clients (broadcast)
+    this.server.emit('round:stats:updated', eventPayload);
+    
+    this.logger.log(`📡 [EventsGateway] ✅ round:stats:updated event emitted to ${this.connectedClients.size} client(s)`);
+  }
+
+  /**
+   * Emit round:active:updated event (broadcast)
+   * Called when active round changes or pool updates
+   */
+  emitActiveRoundUpdated(roundData: {
+    id: string;
+    roundNumber: number;
+    status: string;
+    totalPool: number;
+    winnerPool: number;
+    adminFee: number;
+    totalBets: number;
+    drawTime: Date;
+    winningBlock: number | null;
+    drawnAt: Date | null;
+  }) {
+    const eventPayload = {
+      ...roundData,
+      drawTime: roundData.drawTime.toISOString(),
+      drawnAt: roundData.drawnAt?.toISOString() || null,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.logger.log(`📡 [EventsGateway] 🚀 EMITTING round:active:updated event`);
+    this.logger.log(`📡 [EventsGateway] Round ID: ${roundData.id}, Round #${roundData.roundNumber}`);
+    
+    // Emit to all connected clients (broadcast)
+    this.server.emit('round:active:updated', eventPayload);
+    
+    this.logger.log(`📡 [EventsGateway] ✅ round:active:updated event emitted to ${this.connectedClients.size} client(s)`);
+  }
+
+  /**
+   * Emit user:balance:updated event to specific user
+   */
+  emitUserBalanceUpdated(userId: string, balance: number, points: number) {
+    const eventPayload = {
+      kyatBalance: balance,
+      points,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.emitToUser(userId, 'user:balance:updated', eventPayload);
+  }
 }
 

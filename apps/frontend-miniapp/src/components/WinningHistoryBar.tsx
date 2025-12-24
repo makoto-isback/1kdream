@@ -20,9 +20,10 @@ export const WinningHistoryBar: React.FC<Props> = ({ language, limit = 10, refre
   const [recentRounds, setRecentRounds] = useState<RecentRound[]>([]);
 
   // Fetch ALL recent rounds (not just winners)
+  // Reduced polling to 60 seconds as WebSocket handles real-time updates
   useEffect(() => {
     loadRecentRounds();
-    const interval = setInterval(loadRecentRounds, 30000);
+    const interval = setInterval(loadRecentRounds, 60000); // 60 seconds instead of 30
     return () => clearInterval(interval);
   }, [limit, refreshKey]);
 

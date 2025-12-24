@@ -110,10 +110,11 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
   }, [isOpen, activeTab]);
 
   // Load user withdrawals and auto-refresh
+  // Reduced polling to 60 seconds as WebSocket handles real-time updates
   useEffect(() => {
     if (isOpen && user?.id) {
       loadUserWithdrawals();
-      const interval = setInterval(loadUserWithdrawals, 30000); // Refresh every 30 seconds
+      const interval = setInterval(loadUserWithdrawals, 60000); // 60 seconds instead of 30
       return () => clearInterval(interval);
     }
   }, [isOpen, user?.id, loadUserWithdrawals]);

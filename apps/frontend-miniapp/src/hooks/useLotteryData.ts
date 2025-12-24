@@ -3,6 +3,7 @@ import { lotteryService, LotteryRound } from '../services/lottery';
 import { betsService } from '../services/bets';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { socketService } from '../services/socket';
 
 // Type for block statistics (optional overlay data)
 type BlockStats = {
@@ -117,8 +118,85 @@ export const useLotteryData = () => {
     // Fetch immediately - don't wait for auth
     // Blocks render instantly, stats update when API responds
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
+
+    // Connect to WebSocket for real-time updates
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (token) {
+      socketService.connect(token);
+
+      // Subscribe to bet:placed events - update pool and stats immediately
+      const unsubscribeBet = socketService.onBetPlaced((data) => {
+        console.log('[useLotteryData] Received bet:placed event', data);
+        
+        // Update active round pool if it's the current round
+        if (activeRound?.id === data.roundId) {
+          setActiveRound(prev => prev ? {
+            ...prev,
+            totalPool: data.totalPool,
+            winnerPool: data.winnerPool,
+            adminFee: data.adminFee,
+          } : null);
+          
+          // Update block stats
+          const statsMap = new Map<number, BlockStats>();
+          data.blockStats.forEach((stat) => {
+            statsMap.set(stat.blockNumber, {
+              buyers: stat.totalBets || 0,
+              totalKyat: stat.totalAmount || 0,
+            });
+          });
+          setBlockStats(statsMap);
+        }
+      });
+
+      // Subscribe to round:stats:updated events
+      const unsubscribeStats = socketService.onRoundStatsUpdated((data) => {
+        console.log('[useLotteryData] Received round:stats:updated event', data);
+        
+        if (activeRound?.id === data.roundId) {
+          const statsMap = new Map<number, BlockStats>();
+          data.blockStats.forEach((stat) => {
+            statsMap.set(stat.blockNumber, {
+              buyers: stat.totalBets || 0,
+              totalKyat: stat.totalAmount || 0,
+            });
+          });
+          setBlockStats(statsMap);
+        }
+      });
+
+      // Subscribe to round:active:updated events
+      const unsubscribeRound = socketService.onActiveRoundUpdated((data) => {
+        console.log('[useLotteryData] Received round:active:updated event', data);
+        
+        // Update active round
+        setActiveRound({
+          id: data.id,
+          roundNumber: data.roundNumber,
+          status: data.status,
+          totalPool: data.totalPool,
+          winnerPool: data.winnerPool,
+          adminFee: data.adminFee,
+          totalBets: data.totalBets,
+          drawTime: data.drawTime, // Keep as string to match LotteryRound type
+          winningBlock: data.winningBlock,
+          drawnAt: data.drawnAt || null,
+        } as LotteryRound);
+        hasLoadedRoundRef.current = true;
+        setError(null);
+      });
+
+      // Cleanup on unmount
+      return () => {
+        unsubscribeBet();
+        unsubscribeStats();
+        unsubscribeRound();
+      };
+    }
+
+    // Fallback: Keep a slow polling interval (60 seconds) as backup in case WebSocket fails
+    const fallbackInterval = setInterval(fetchData, 60000);
+    return () => clearInterval(fallbackInterval);
   }, []); // Remove isAuthReady dependency - blocks don't need auth
 
   // Re-fetch user stake when auth becomes ready (optional enhancement)
