@@ -683,26 +683,33 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                         </div>
                     )}
 
-                    {/* Withdrawal Status List */}
+                    {/* Withdrawal Status List - Show only most recent */}
                     {userWithdrawals.length > 0 && (
                         <div className="space-y-2">
                             <h4 className="text-[13px] font-semibold text-ios-label-secondary uppercase tracking-wide px-1">
                                 {language === 'my' ? 'ငွေထုတ်ယူမှု မှတ်တမ်း' : 'Withdrawal History'}
                             </h4>
-                            {userWithdrawals.slice(0, 5).map((withdrawal) => {
-                                const statusDisplay = getWithdrawalStatusDisplay(withdrawal);
-                                const requestTime = new Date(withdrawal.requestTime || withdrawal.createdAt);
+                            {(() => {
+                                // Sort by date descending and show only the most recent one
+                                const sorted = [...userWithdrawals].sort((a, b) => {
+                                    const dateA = new Date(a.requestTime || a.createdAt).getTime();
+                                    const dateB = new Date(b.requestTime || b.createdAt).getTime();
+                                    return dateB - dateA;
+                                });
+                                const mostRecent = sorted[0];
+                                const statusDisplay = getWithdrawalStatusDisplay(mostRecent);
+                                const requestTime = new Date(mostRecent.requestTime || mostRecent.createdAt);
                                 const readyTime = new Date(requestTime.getTime() + 60 * 60 * 1000);
                                 
                                 return (
                                     <div 
-                                        key={withdrawal.id}
+                                        key={mostRecent.id}
                                         className={`p-3 rounded-xl ${statusDisplay.bg} border ${statusDisplay.border}`}
                                     >
                                         <div className="flex items-center justify-between mb-2">
                                             <div>
                                                 <div className="text-white font-semibold text-[14px]">
-                                                    {Number(withdrawal.kyatAmount).toLocaleString()} KYAT
+                                                    {Number(mostRecent.kyatAmount).toLocaleString()} KYAT
                                                 </div>
                                                 <div className="text-[11px] text-ios-label-secondary mt-1">
                                                     {requestTime.toLocaleString('en-US', {
@@ -717,7 +724,7 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                                                 <div className={`text-[12px] font-medium ${statusDisplay.color}`}>
                                                     {statusDisplay.text}
                                                 </div>
-                                                {withdrawal.status === 'pending' && (
+                                                {mostRecent.status === 'pending' && (
                                                     <div className="text-[10px] text-ios-label-tertiary mt-1">
                                                         {language === 'my' ? 'Ready at' : 'Ready at'}: {readyTime.toLocaleTimeString('en-US', {
                                                             hour: '2-digit',
@@ -727,14 +734,14 @@ export const WalletModal: React.FC<Props> = ({ language, isOpen, onClose, balanc
                                                 )}
                                             </div>
                                         </div>
-                                        {withdrawal.tonTxHash && (
+                                        {mostRecent.tonTxHash && (
                                             <div className="text-[10px] text-ios-label-tertiary font-mono mt-2 pt-2 border-t border-white/5">
-                                                TX: {withdrawal.tonTxHash.slice(0, 16)}...
+                                                TX: {mostRecent.tonTxHash.slice(0, 16)}...
                                             </div>
                                         )}
                                     </div>
                                 );
-                            })}
+                            })()}
                         </div>
                     )}
 
