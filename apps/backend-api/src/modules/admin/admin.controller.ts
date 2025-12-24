@@ -48,7 +48,7 @@ export class AdminController {
   }
 
   @Get('withdrawals')
-  @Throttle({ default: { limit: 1000, ttl: 60000 } }) // 1000 requests per minute for admin endpoints
+  @Throttle({ default: { limit: 2000, ttl: 60000 } }) // 2000 requests per minute for admin endpoints
   async getAllWithdrawals(
     @Request() req,
     @Query('includeCompleted') includeCompleted?: string,

@@ -1,5 +1,5 @@
 import { Controller, Get, Param, UseGuards, Post, Query } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { LotteryService } from './lottery.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SystemService } from '../system/system.service';
@@ -12,46 +12,46 @@ export class LotteryController {
   ) {}
 
   @Get('active')
-  @Throttle({ strict: { limit: 300, ttl: 60000 } }) // 300 requests per minute for public endpoint
+  @SkipThrottle() // No rate limit - public read-only endpoint
   async getActiveRound() {
     return this.lotteryService.getActiveRound();
   }
 
   @Get('latest')
-  @Throttle({ strict: { limit: 300, ttl: 60000 } }) // 300 requests per minute for public endpoint
+  @SkipThrottle() // No rate limit - public read-only endpoint
   async getLatestRound() {
     return this.lotteryService.getLatestRound();
   }
 
   @Get('round/:id')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 500, ttl: 60000 } }) // 500 requests per minute for authenticated endpoint
+  @Throttle({ default: { limit: 2000, ttl: 60000 } }) // 2000 requests per minute for authenticated endpoint
   async getRound(@Param('id') id: string) {
     return this.lotteryService.getRoundById(id);
   }
 
   @Get('round/:id/stats')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 1000, ttl: 60000 } }) // 1000 requests per minute (called for multiple rounds)
+  @Throttle({ default: { limit: 2000, ttl: 60000 } }) // 2000 requests per minute (called for multiple rounds)
   async getRoundStats(@Param('id') id: string) {
     return this.lotteryService.getRoundStats(id);
   }
 
   @Get('winners-feed')
-  @Throttle({ strict: { limit: 300, ttl: 60000 } }) // 300 requests per minute for public endpoint
+  @SkipThrottle() // No rate limit - public read-only endpoint
   async getWinnersFeed() {
     return this.lotteryService.getWinnersFeed();
   }
 
   @Get('recent-rounds')
-  @Throttle({ strict: { limit: 300, ttl: 60000 } }) // 300 requests per minute for public endpoint
+  @SkipThrottle() // No rate limit - public read-only endpoint
   async getRecentRounds(@Query('limit') limit?: string) {
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
     return this.lotteryService.getRecentRounds(parsedLimit);
   }
 
   @Get('pool-info')
-  @Throttle({ strict: { limit: 300, ttl: 60000 } }) // 300 requests per minute for public endpoint
+  @SkipThrottle() // No rate limit - public read-only endpoint
   async getPoolInfo() {
     return this.lotteryService.getPoolInfo();
   }

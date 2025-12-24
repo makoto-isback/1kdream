@@ -10,14 +10,14 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 500, ttl: 60000 } }) // 500 requests per minute for user data
+  @Throttle({ default: { limit: 2000, ttl: 60000 } }) // 2000 requests per minute for user data
   async getMe(@Request() req) {
     return req.user;
   }
 
   @Get('balance')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 500, ttl: 60000 } }) // 500 requests per minute for balance
+  @Throttle({ default: { limit: 2000, ttl: 60000 } }) // 2000 requests per minute for balance
   async getBalance(@Request() req) {
     const user = await this.usersService.findOne(req.user.id);
     return {
