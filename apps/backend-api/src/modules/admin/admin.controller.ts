@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -47,6 +48,7 @@ export class AdminController {
   }
 
   @Get('withdrawals')
+  @Throttle({ default: { limit: 1000, ttl: 60000 } }) // 1000 requests per minute for admin endpoints
   async getAllWithdrawals(
     @Request() req,
     @Query('includeCompleted') includeCompleted?: string,
