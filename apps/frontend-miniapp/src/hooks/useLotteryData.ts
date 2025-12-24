@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { lotteryService, LotteryRound } from '../services/lottery';
 import { betsService } from '../services/bets';
 import api from '../services/api';
@@ -14,21 +14,36 @@ export const useLotteryData = () => {
   const [activeRound, setActiveRound] = useState<LotteryRound | null>(null);
   const [blockStats, setBlockStats] = useState<Map<number, BlockStats>>(new Map());
   const [userStake, setUserStake] = useState<number>(0);
-  const [loading, setLoading] = useState(false); // Start as false - don't block UI
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { isAuthReady } = useAuth();
+  
+  // Track if we've ever successfully loaded a round (prevents showing error if we have cached data)
+  const hasLoadedRoundRef = useRef(false);
+  // Track if there's a fetch in progress (prevents race conditions)
+  const isFetchingRef = useRef(false);
 
   const fetchData = async () => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      console.log('[useLotteryData] Fetch already in progress, skipping...');
+      return;
+    }
+
+    isFetchingRef.current = true;
+    
     try {
       setLoading(true);
       
       // Fetch active round - don't require auth for this
       const round = await lotteryService.getActiveRound();
       
-      // Only clear error if we successfully got a round
+      // Successfully got a response (even if null)
       if (round) {
+        // We have a round - clear error and update state
         setError(null);
         setActiveRound(round);
+        hasLoadedRoundRef.current = true;
 
         // Get round stats to populate buyers and totalKyat per block
         // This is optional - if it fails, blocks still render with default stats
@@ -68,21 +83,22 @@ export const useLotteryData = () => {
           }
         }
       } else {
-        // No active round - clear stats, blocks still render
-        setBlockStats(new Map());
-        // Only set error if we don't have a cached round
-        // If we already have activeRound, don't show error (might be temporary backend issue)
-        if (!activeRound) {
+        // API returned null (no active round exists)
+        // Only show error if we've never successfully loaded a round
+        // If we have cached data, keep using it and don't show error
+        if (!hasLoadedRoundRef.current) {
           setError('No active round available');
         } else {
-          // We have cached data, clear error
+          // We have cached data, don't show error for temporary "no round" responses
           setError(null);
         }
+        // Don't clear activeRound - keep using cached data
+        setBlockStats(new Map());
       }
     } catch (err: any) {
-      // Only set error if we don't have cached round data
-      // If we already have activeRound, this is a non-critical refetch failure
-      if (!activeRound) {
+      // API call failed (network error, timeout, 500, etc.)
+      // Only set error if we've never successfully loaded a round
+      if (!hasLoadedRoundRef.current) {
         setError(err.response?.data?.message || 'Failed to load lottery data');
         console.error('[useLotteryData] Error fetching lottery data:', err);
       } else {
@@ -93,6 +109,7 @@ export const useLotteryData = () => {
       // Don't throw - blocks still render even if API fails
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
