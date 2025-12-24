@@ -1,4 +1,5 @@
 import { Controller, Get, Param, UseGuards, Post, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { LotteryService } from './lottery.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SystemService } from '../system/system.service';
@@ -11,11 +12,13 @@ export class LotteryController {
   ) {}
 
   @Get('active')
+  @Throttle({ strict: { limit: 120, ttl: 60000 } }) // 120 requests per minute for public endpoint
   async getActiveRound() {
     return this.lotteryService.getActiveRound();
   }
 
   @Get('latest')
+  @Throttle({ strict: { limit: 120, ttl: 60000 } }) // 120 requests per minute for public endpoint
   async getLatestRound() {
     return this.lotteryService.getLatestRound();
   }
@@ -33,17 +36,20 @@ export class LotteryController {
   }
 
   @Get('winners-feed')
+  @Throttle({ strict: { limit: 120, ttl: 60000 } }) // 120 requests per minute for public endpoint
   async getWinnersFeed() {
     return this.lotteryService.getWinnersFeed();
   }
 
   @Get('recent-rounds')
+  @Throttle({ strict: { limit: 120, ttl: 60000 } }) // 120 requests per minute for public endpoint
   async getRecentRounds(@Query('limit') limit?: string) {
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
     return this.lotteryService.getRecentRounds(parsedLimit);
   }
 
   @Get('pool-info')
+  @Throttle({ strict: { limit: 120, ttl: 60000 } }) // 120 requests per minute for public endpoint
   async getPoolInfo() {
     return this.lotteryService.getPoolInfo();
   }

@@ -36,13 +36,13 @@ import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
     ThrottlerModule.forRoot([
       {
         name: 'default',
-        ttl: 900000, // 15 minutes in milliseconds
-        limit: 100, // 100 requests per 15 minutes for authenticated endpoints
+        ttl: 60000, // 1 minute in milliseconds
+        limit: 60, // 60 requests per minute for authenticated endpoints (1 req/sec average)
       },
       {
         name: 'strict',
-        ttl: 900000, // 15 minutes
-        limit: 20, // 20 requests per 15 minutes for unauthenticated endpoints
+        ttl: 60000, // 1 minute
+        limit: 120, // 120 requests per minute for public read-only endpoints (2 req/sec average)
       },
       {
         name: 'auth',
