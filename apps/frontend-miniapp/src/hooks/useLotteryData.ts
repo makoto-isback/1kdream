@@ -54,19 +54,23 @@ export const useLotteryData = () => {
       socketService.connect(token);
 
       // Subscribe to UserDataSync for active round
+      // ALWAYS call setState to trigger React re-render
       const unsubscribeRound = userDataSync.subscribe('activeRound', (round: LotteryRound | null) => {
+        console.log('[useLotteryData] Active round subscription callback fired:', round ? `round ${round.id}` : 'null');
+        // ALWAYS update state to trigger re-render
+        setActiveRound(round);
+        activeRoundRef.current = round;
         if (round) {
-          console.log('[useLotteryData] Active round updated from UserDataSync');
-          setActiveRound(round);
-          activeRoundRef.current = round;
           hasLoadedRoundRef.current = true;
           setError(null);
         }
       });
 
       // Subscribe to UserDataSync for user bets
+      // ALWAYS call setState to trigger React re-render
       const unsubscribeBets = userDataSync.subscribe('bets', (bets: Bet[]) => {
-        console.log('[useLotteryData] User bets updated from UserDataSync');
+        console.log('[useLotteryData] Bets subscription callback fired:', bets.length, 'bets');
+        // ALWAYS update ref and state to trigger re-render
         userBetsRef.current = bets;
         if (activeRoundRef.current) {
           updateUserStakeFromBets(activeRoundRef.current.id);

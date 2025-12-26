@@ -215,6 +215,8 @@ class UserDataSyncController {
 
   /**
    * Subscribe to data updates
+   * CRITICAL: Always calls callback immediately with current state (even if null/empty)
+   * This ensures React hooks get initial data and subscribe to future updates
    */
   subscribe(dataType: string, callback: DataUpdateCallback): () => void {
     if (!this.subscribers.has(dataType)) {
@@ -222,11 +224,11 @@ class UserDataSyncController {
     }
     this.subscribers.get(dataType)!.add(callback);
 
-    // Immediately call with current state
+    // Immediately call with current state (even if null/empty)
+    // This ensures React hooks get initial data and trigger re-render
     const currentData = this.getData(dataType);
-    if (currentData !== null) {
-      callback(currentData);
-    }
+    console.log(`[UserDataSync] Subscribing to ${dataType}, initial data:`, currentData !== null ? 'exists' : 'null');
+    callback(currentData);
 
     // Return unsubscribe function
     return () => {
@@ -242,10 +244,12 @@ class UserDataSyncController {
 
   /**
    * Notify subscribers of data updates
+   * CRITICAL: This MUST be called every time data changes to trigger React re-renders
    */
   private notifySubscribers(dataType: string, data: any): void {
     const subscribers = this.subscribers.get(dataType);
     if (subscribers) {
+      console.log(`[UserDataSync] Notifying ${subscribers.size} subscribers for ${dataType}`);
       subscribers.forEach(callback => {
         try {
           callback(data);
@@ -253,6 +257,8 @@ class UserDataSyncController {
           console.error(`[UserDataSync] Error in subscriber callback for ${dataType}:`, error);
         }
       });
+    } else {
+      console.log(`[UserDataSync] No subscribers for ${dataType}`);
     }
   }
 

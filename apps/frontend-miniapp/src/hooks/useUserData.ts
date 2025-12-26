@@ -19,27 +19,29 @@ export const useUserData = () => {
     // Empty dependency array ensures subscriptions are created once and persist
     
     // Subscribe to user updates
+    // ALWAYS call setState to trigger React re-render, even if data is the same
     const unsubscribeUser = userDataSync.subscribe('user', (userData: User | null) => {
-      // Only update if user data exists (don't clear on null unless explicit logout)
-      if (userData) {
-        setUser(userData);
-      } else if (isAuthReady === false) {
-        // Only clear user if authReady is false (explicit logout)
-        setUser(null);
-      }
+      console.log('[useUserData] User subscription callback fired:', userData ? `user ${userData.id}` : 'null');
+      // ALWAYS update state to trigger re-render
+      setUser(userData);
     });
 
     // Subscribe to authReady updates
     // TERMINAL: Once true, never reverts to false
+    // ALWAYS call setState to trigger React re-render
     const unsubscribeAuthReady = userDataSync.subscribe('authReady', (ready: boolean) => {
-      if (ready) {
-        setIsAuthReady(true);
-        // Once authReady is true, it never goes back to false
-      }
+      console.log('[useUserData] authReady subscription callback fired:', ready);
+      setIsAuthReady(ready);
     });
 
-    // Check initial state
-    if (userDataSync.isAuthReady()) {
+    // Sync initial state immediately
+    const initialUser = userDataSync.getUser();
+    const initialAuthReady = userDataSync.isAuthReady();
+    console.log('[useUserData] Initial sync:', { hasUser: !!initialUser, authReady: initialAuthReady });
+    if (initialUser) {
+      setUser(initialUser);
+    }
+    if (initialAuthReady) {
       setIsAuthReady(true);
     }
 
