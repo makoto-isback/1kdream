@@ -415,6 +415,14 @@ class SocketService {
   }
 
   /**
+   * Subscribe to user:bets:updated events
+   */
+  onUserBetsUpdated(callback: (data: { bets: any[] }) => void): () => void {
+    const event = 'user:bets:updated';
+    return this.subscribeToEvent(event, callback);
+  }
+
+  /**
    * Generic event subscription helper
    */
   private subscribeToEvent(event: string, callback: (...args: any[]) => void): () => void {

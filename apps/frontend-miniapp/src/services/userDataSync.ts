@@ -100,7 +100,7 @@ class UserDataSyncController {
     });
 
     // Listen for user bets updates from socket
-    socketService.on('user:bets:updated', (data: { bets: any[] }) => {
+    socketService.onUserBetsUpdated((data: { bets: any[] }) => {
       console.log('📡 [UserDataSync] Received user:bets:updated socket event', data);
       if (data.bets) {
         this.updateBetsFromSocket(data.bets);
