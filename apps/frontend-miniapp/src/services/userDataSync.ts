@@ -19,7 +19,7 @@ import { canMakeRequest, recordRequest, getTimeUntilNextRequest, normalizeEndpoi
 
 interface UserDataState {
   user: User | null;
-  bets: Bet[];
+  bets: Bet[] | null; // null = never loaded, [] = empty (socket source of truth)
   autobetPlans: AutoBetPlan[];
   activeRound: LotteryRound | null;
   roundStats: any;
