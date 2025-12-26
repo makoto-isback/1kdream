@@ -15,16 +15,14 @@ export interface BetPlacedEvent {
   roundId: string;
   blockNumber: number;
   amount: number;
-  totalPool: number;
-  winnerPool: number;
-  adminFee: number;
-  blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+  userId: string;
+  createdAt: string;
   timestamp: string;
 }
 
 export interface RoundStatsUpdatedEvent {
   roundId: string;
-  blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+  stats: Record<number, { buyers: number; totalAmount: number }>;
   timestamp: string;
 }
 

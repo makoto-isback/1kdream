@@ -195,9 +195,10 @@ class UserDataSyncController {
 
     // Listen for round:stats:updated events - update block stats
     // PERSISTENT: Never unsubscribe - lives for app lifetime
+    // CONTRACT: { roundId, stats: { [blockNumber]: { buyers, totalAmount } } }
     socketService.onRoundStatsUpdated((data: {
       roundId: string;
-      blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+      stats: Record<number, { buyers: number; totalAmount: number }>;
     }) => {
       console.log('📡 [UserDataSync] Received round:stats:updated socket event', data);
       
@@ -205,9 +206,9 @@ class UserDataSyncController {
       // Stats can arrive before activeRound is set
       console.log('📡 [UserDataSync] Updating roundStats from round:stats:updated event');
       const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
-      data.blockStats.forEach((stat) => {
-        statsMap.set(stat.blockNumber, {
-          buyers: stat.totalBets || 0,
+      Object.entries(data.stats || {}).forEach(([blockNum, stat]) => {
+        statsMap.set(parseInt(blockNum), {
+          buyers: stat.buyers || 0,
           totalKyat: stat.totalAmount || 0,
         });
       });
