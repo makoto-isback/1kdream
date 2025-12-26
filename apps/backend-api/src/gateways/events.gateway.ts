@@ -208,6 +208,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   }
 
   handleDisconnect(@ConnectedSocket() client: AuthenticatedSocket) {
+    // Leave user room on disconnect (automatic, but explicit for clarity)
+    if (client.userId) {
+      client.leave(`user:${client.userId}`);
+    }
     this.connectedClients.delete(client.id);
     this.logger.log(`Client ${client.id} disconnected`);
   }
