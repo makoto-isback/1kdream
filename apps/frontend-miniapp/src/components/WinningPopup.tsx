@@ -3,7 +3,7 @@ import { GlassCard } from './GlassCard';
 import { Language } from '../types/ui';
 import { TRANSLATIONS } from '../constants/translations';
 import { LotteryRound, lotteryService } from '../services/lottery';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import { userDataSync } from '../services/userDataSync';
 
 interface Props {
@@ -23,7 +23,7 @@ export const WinningPopup: React.FC<Props> = ({
   isOpen,
   onClose,
 }) => {
-  const { user } = useAuth();
+  const { user } = useUserData();
   const [userWon, setUserWon] = useState(false);
   const [userPayout, setUserPayout] = useState(0);
   const [checking, setChecking] = useState(true);

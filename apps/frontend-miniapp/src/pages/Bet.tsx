@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import { useApi } from '../contexts/ApiContext';
 import { useTranslation } from '../hooks/useTranslation';
 import './Bet.css';
@@ -15,7 +15,7 @@ interface LotteryRound {
 
 export default function Bet() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser } = useUserData();
   const api = useApi();
   const { t } = useTranslation();
   const [round, setRound] = useState<LotteryRound | null>(null);

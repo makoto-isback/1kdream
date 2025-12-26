@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import api from '../services/api';
 import { useTranslation } from '../hooks/useTranslation';
 import Countdown from '../components/Countdown';
@@ -19,7 +19,7 @@ interface LotteryRound {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser } = useUserData();
   const { t } = useTranslation();
   const [round, setRound] = useState<LotteryRound | null>(null);
 

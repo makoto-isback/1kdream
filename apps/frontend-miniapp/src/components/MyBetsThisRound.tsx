@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { GlassCard } from './GlassCard';
 import { Language } from '../types/ui';
 import { Bet } from '../services/bets';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import { userDataSync } from '../services/userDataSync';
 
 interface Props {
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey }) => {
-  const { user, isAuthReady } = useAuth();
+  const { user, isAuthReady } = useUserData();
   const [bets, setBets] = useState<Bet[]>([]);
   const [loading, setLoading] = useState(false);
 

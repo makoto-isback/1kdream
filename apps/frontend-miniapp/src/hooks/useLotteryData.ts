@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { LotteryRound } from '../services/lottery';
 import { Bet } from '../services/bets';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from './useUserData';
 import { socketService } from '../services/socket';
 import { userDataSync } from '../services/userDataSync';
 
@@ -25,7 +25,7 @@ export const useLotteryData = () => {
   const [userStake, setUserStake] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isAuthReady, user } = useAuth();
+  const { isAuthReady, user } = useUserData();
   
   // Track if we've ever successfully loaded a round (prevents showing error if we have cached data)
   const hasLoadedRoundRef = useRef(false);

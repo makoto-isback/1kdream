@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import WebApp from '@twa-dev/sdk';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider } from './contexts/AuthContext';
+import { useUserData } from './hooks/useUserData';
 import { WalletProvider } from './contexts/WalletContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LotteryPage from './pages/LotteryPage';
@@ -10,7 +11,7 @@ import Withdraw from './pages/Withdraw';
 import './styles/index.css';
 
 function AppContent() {
-  const { authError, loading: authLoading, isAuthReady, user } = useAuth();
+  const { isAuthReady, user } = useUserData();
   const isDev = import.meta.env.DEV;
 
   // TEMP DEBUG: High-signal logs for UI boot
@@ -20,10 +21,8 @@ function AppContent() {
       authReady: isAuthReady,
       hasUser: !!user,
       telegram: hasTelegram,
-      authError,
-      authLoading,
     });
-  }, [isAuthReady, user, authError, authLoading]);
+  }, [isAuthReady, user]);
 
   // CRITICAL FIX: Router must ALWAYS render, even with auth errors
   // The early return was preventing /deposit route from ever mounting

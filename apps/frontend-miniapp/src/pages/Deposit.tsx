@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import { useTranslation } from '../hooks/useTranslation';
 import { useWallet } from '../contexts/WalletContext';
 import { useClientReady } from '../hooks/useClientReady';
@@ -24,7 +24,7 @@ export default function Deposit() {
   console.log('🔥 RENDERING FILE: apps/frontend-miniapp/src/pages/Deposit.tsx');
   console.log('[WALLET PAGE] Deposit page rendered');
   const navigate = useNavigate();
-  const { user, isAuthReady } = useAuth();
+  const { user, isAuthReady } = useUserData();
   const { t } = useTranslation();
   const isClientReady = useClientReady();
   

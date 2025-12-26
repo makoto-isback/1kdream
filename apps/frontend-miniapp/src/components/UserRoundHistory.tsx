@@ -5,7 +5,7 @@ import { Bet as BetServiceType } from '../services/bets';
 import { lotteryService } from '../services/lottery';
 import { userDataSync } from '../services/userDataSync';
 
-type Bet = {
+type BetLocal = {
   id: string;
   lotteryRoundId: string;
   blockNumber: number;
@@ -28,7 +28,6 @@ interface Props {
 }
 
 export const UserRoundHistory: React.FC<Props> = ({ language, refreshKey }) => {
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<RoundEntry[]>([]);
 

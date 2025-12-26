@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '../contexts/WalletContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from './useUserData';
 import { activationService, ActivationStatus } from '../services/activation';
 import { usdtDepositService, UsdtDeposit } from '../services/usdtDeposit';
 import { usdtWithdrawalService, UsdtWithdrawal } from '../services/usdtWithdrawal';
@@ -36,7 +36,7 @@ export interface UsdtWalletState {
 
 export const useUsdtWallet = (): UsdtWalletState => {
   const { walletInfo, isConnected, connect: connectWalletFn, isLoading: walletLoading } = useWallet();
-  const { user, refreshUser, isAuthReady } = useAuth();
+  const { user, refreshUser, isAuthReady } = useUserData();
   
   const [activationStatus, setActivationStatus] = useState<ActivationStatus | null>(null);
   const [activationLoading, setActivationLoading] = useState(false);

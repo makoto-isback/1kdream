@@ -9,7 +9,7 @@ import { Icons } from '../components/Icons';
 import { Language, PurchaseMode, NumberStats } from '../types/ui';
 import { TonAddressModal } from '../components/TonAddressModal';
 import { TRANSLATIONS } from '../constants/translations';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import { useLotteryData } from '../hooks/useLotteryData';
 import { useCountdown } from '../hooks/useCountdown';
 import { betsService } from '../services/bets';
@@ -43,7 +43,7 @@ const STATIC_BLOCKS: NumberStats[] = Array.from({ length: 25 }, (_, i) => ({
 }));
 
 const LotteryPage: React.FC = () => {
-  const { user, refreshUser, isAuthReady } = useAuth();
+  const { user, refreshUser, isAuthReady } = useUserData();
   const { activeRound, blockStats, userStake, loading: dataLoading, error: dataError, refetch } = useLotteryData();
   const [language, setLanguage] = useState<Language>('en');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);

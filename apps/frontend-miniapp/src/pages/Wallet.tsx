@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserData } from '../hooks/useUserData';
 import api from '../services/api';
 import { useTranslation } from '../hooks/useTranslation';
 import '../styles/Wallet.css';
@@ -25,7 +25,7 @@ interface Withdrawal {
 export default function Wallet() {
   console.log('🔥 RENDERING FILE: apps/frontend-miniapp/src/pages/Wallet.tsx (OLD UI)');
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser } = useUserData();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw'>('deposit');
   

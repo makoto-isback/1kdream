@@ -268,10 +268,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+// useAuth() removed - use useUserData() hook instead
+// AuthContext now only provides AuthProvider for login/logout initialization
+// User state comes from UserDataSync
