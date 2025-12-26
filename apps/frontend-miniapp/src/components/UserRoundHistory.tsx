@@ -40,10 +40,10 @@ export const UserRoundHistory: React.FC<Props> = ({ language, refreshKey }) => {
     try {
       setLoading(true);
       // Get user bets from UserDataSync (socket-first, no HTTP)
-      const userBets: BetType[] = userDataSync.getData('bets') || [];
+      const userBets: BetServiceType[] = userDataSync.getData('bets') || [];
       // Group by round
-      const byRound = new Map<string, Bet[]>();
-      userBets.forEach((bet: BetType) => {
+      const byRound = new Map<string, BetServiceType[]>();
+      userBets.forEach((bet: BetServiceType) => {
         const list = byRound.get(bet.lotteryRoundId) || [];
         list.push(bet);
         byRound.set(bet.lotteryRoundId, list);
