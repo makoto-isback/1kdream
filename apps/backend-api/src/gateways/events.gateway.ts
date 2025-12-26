@@ -193,22 +193,30 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /**
    * Emit bet:placed event to all connected clients (broadcast)
    * Called after bet is successfully placed
+   * CONTRACT: Must include userId, roundId, blockNumber, amount, createdAt
    */
   emitBetPlaced(betData: {
     roundId: string;
     blockNumber: number;
     amount: number;
+    userId: string;
+    createdAt: string;
     totalPool: number;
     winnerPool: number;
     adminFee: number;
     blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
   }) {
     const eventPayload = {
-      ...betData,
+      roundId: betData.roundId,
+      blockNumber: betData.blockNumber,
+      amount: betData.amount,
+      userId: betData.userId,
+      createdAt: betData.createdAt,
       timestamp: new Date().toISOString(),
     };
 
     this.logger.log(`📡 [EventsGateway] 🚀 EMITTING bet:placed event`);
+    this.logger.log(`📡 [EventsGateway] User ID: ${betData.userId}`);
     this.logger.log(`📡 [EventsGateway] Round ID: ${betData.roundId}`);
     this.logger.log(`📡 [EventsGateway] Block: ${betData.blockNumber}, Amount: ${betData.amount}`);
     
@@ -221,16 +229,27 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /**
    * Emit round:stats:updated event (broadcast)
    * Called when block statistics change
+   * CONTRACT: Must include roundId and stats object with blockNumber keys
    */
   emitRoundStatsUpdated(roundId: string, blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>) {
+    // Convert array to object format: { [blockNumber]: { buyers, totalAmount } }
+    const statsObj: Record<number, { buyers: number; totalAmount: number }> = {};
+    blockStats.forEach(stat => {
+      statsObj[stat.blockNumber] = {
+        buyers: stat.totalBets,
+        totalAmount: stat.totalAmount,
+      };
+    });
+
     const eventPayload = {
       roundId,
-      blockStats,
+      stats: statsObj,
       timestamp: new Date().toISOString(),
     };
 
     this.logger.log(`📡 [EventsGateway] 🚀 EMITTING round:stats:updated event`);
     this.logger.log(`📡 [EventsGateway] Round ID: ${roundId}`);
+    this.logger.log(`📡 [EventsGateway] Block count: ${Object.keys(statsObj).length}`);
     
     // Emit to all connected clients (broadcast)
     this.server.emit('round:stats:updated', eventPayload);
@@ -284,6 +303,31 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
+   * Emit user:bets:updated event to specific user
+   * Called after bet is successfully placed (manual or autobet)
+   */
+  emitUserBetsUpdated(userId: string, bets: Array<{
+    id: string;
+    roundId: string;
+    blockNumber: number;
+    amount: number;
+    createdAt: string;
+  }>) {
+    const eventPayload = {
+      bets,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.logger.log(`📡 [EventsGateway] 🚀 EMITTING user:bets:updated event`);
+    this.logger.log(`📡 [EventsGateway] User ID: ${userId}`);
+    this.logger.log(`📡 [EventsGateway] Bet count: ${bets.length}`);
+    
+    this.emitToUser(userId, 'user:bets:updated', eventPayload);
+    
+    this.logger.log(`📡 [EventsGateway] ✅ user:bets:updated event emitted to user ${userId}`);
+  }
+
+  /**
    * Emit initial data after socket authentication
    * This ensures frontend gets user balance, active round, and bets immediately
    */
@@ -314,13 +358,22 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       }
 
-      // Emit user bets (send directly to client, not broadcast)
+      // Emit user bets (user-scoped event)
       const userBets = await this.betsService.getUserBets(userId, 100);
       if (userBets && userBets.length > 0) {
         this.logger.log(`📡 [EventsGateway] Emitting initial user bets for ${userId} (${userBets.length} bets)`);
-        // Note: We don't have a 'bets:updated' event, but we can emit user-specific event
-        // For now, bets will be synced via HTTP fallback or when new bets are placed
-        // The frontend can request bets via HTTP if needed
+        const betsPayload = userBets.map(bet => ({
+          id: bet.id,
+          roundId: bet.lotteryRoundId,
+          blockNumber: bet.blockNumber,
+          amount: Number(bet.amount),
+          createdAt: bet.createdAt.toISOString(),
+        }));
+        this.emitUserBetsUpdated(userId, betsPayload);
+      } else {
+        // Emit empty array to signal bets are loaded (even if empty)
+        this.logger.log(`📡 [EventsGateway] Emitting initial user bets for ${userId} (0 bets)`);
+        this.emitUserBetsUpdated(userId, []);
       }
     } catch (error) {
       this.logger.error(`📡 [EventsGateway] Error emitting initial data for ${userId}:`, error);

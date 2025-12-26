@@ -132,35 +132,52 @@ export class BetsService {
 
       await queryRunner.commitTransaction();
 
-      // Emit real-time events after transaction commits
+      // Emit real-time events AFTER transaction commits (REQUIRED)
+      // All events must fire every time without conditions
       if (this.eventsGateway) {
         try {
-          // Get updated round data
+          // Get updated round data and stats
           const updatedRound = await this.lotteryService.getActiveRound();
-          if (updatedRound && updatedRound.id === activeRound.id) {
-            // Get updated round stats
-            const roundStats = await this.lotteryService.getRoundStats(activeRound.id);
-            
-            // Emit bet:placed event with updated data
-            this.eventsGateway.emitBetPlaced({
-              roundId: activeRound.id,
-              blockNumber,
-              amount,
-              totalPool: Number(updatedRound.totalPool),
-              winnerPool: Number(updatedRound.winnerPool),
-              adminFee: Number(updatedRound.adminFee),
-              blockStats: roundStats.blockStats,
-            });
+          const roundStats = await this.lotteryService.getRoundStats(activeRound.id);
+          
+          // 1. Emit bet:placed event (broadcast) - REQUIRED
+          // CONTRACT: Must include userId, roundId, blockNumber, amount, createdAt
+          this.eventsGateway.emitBetPlaced({
+            roundId: activeRound.id,
+            blockNumber,
+            amount,
+            userId,
+            createdAt: savedBet.createdAt.toISOString(),
+            totalPool: Number(updatedRound?.totalPool || activeRound.totalPool),
+            winnerPool: Number(updatedRound?.winnerPool || activeRound.winnerPool),
+            adminFee: Number(updatedRound?.adminFee || activeRound.adminFee),
+            blockStats: roundStats.blockStats,
+          });
 
-            // Emit user balance update
-            const updatedUser = await this.usersService.findOne(userId);
-            if (updatedUser) {
-              this.eventsGateway.emitUserBalanceUpdated(
-                userId,
-                Number(updatedUser.kyatBalance),
-                Number(updatedUser.points)
-              );
-            }
+          // 2. Emit round:stats:updated event (broadcast) - REQUIRED
+          // Remove all gating on activeRound - emit even if roundId did not change
+          this.eventsGateway.emitRoundStatsUpdated(activeRound.id, roundStats.blockStats);
+
+          // 3. Emit user:bets:updated event (user-scoped) - REQUIRED
+          // Get all user bets for current round
+          const userBets = await this.getUserBets(userId, 100);
+          const betsPayload = userBets.map(bet => ({
+            id: bet.id,
+            roundId: bet.lotteryRoundId,
+            blockNumber: bet.blockNumber,
+            amount: Number(bet.amount),
+            createdAt: bet.createdAt.toISOString(),
+          }));
+          this.eventsGateway.emitUserBetsUpdated(userId, betsPayload);
+
+          // 4. Emit user balance update
+          const updatedUser = await this.usersService.findOne(userId);
+          if (updatedUser) {
+            this.eventsGateway.emitUserBalanceUpdated(
+              userId,
+              Number(updatedUser.kyatBalance),
+              Number(updatedUser.points)
+            );
           }
         } catch (eventError) {
           // Don't fail bet placement if event emission fails
