@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -9,6 +9,66 @@ export const api = axios.create({
   },
 });
 
+// Retry configuration for 429 errors
+interface RetryConfig extends InternalAxiosRequestConfig {
+  _retryCount?: number;
+  _retryDelay?: number;
+}
+
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds
+const MAX_RETRY_DELAY = 5000; // 5 seconds
+
+/**
+ * Calculate exponential backoff delay
+ */
+function getRetryDelay(retryCount: number): number {
+  const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+  return Math.min(delay, MAX_RETRY_DELAY);
+}
+
+/**
+ * Retry request with exponential backoff for 429 errors
+ */
+async function retryRequest(
+  error: AxiosError,
+  retryCount: number = 0
+): Promise<any> {
+  const config = error.config as RetryConfig;
+  
+  if (!config) {
+    return Promise.reject(error);
+  }
+
+  // Only retry 429 errors
+  if (error.response?.status !== 429) {
+    return Promise.reject(error);
+  }
+
+  // Don't retry if max retries reached
+  if (retryCount >= MAX_RETRIES) {
+    console.warn('[API] Max retries reached for 429 error, giving up');
+    return Promise.reject(error);
+  }
+
+  const delay = getRetryDelay(retryCount);
+  console.log(`[API] 429 Too Many Requests - retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+
+  // Wait before retrying
+  await new Promise(resolve => setTimeout(resolve, delay));
+
+  // Retry the request
+  try {
+    return await api.request(config);
+  } catch (retryError) {
+    // If still 429, try again
+    if ((retryError as AxiosError).response?.status === 429) {
+      return retryRequest(retryError as AxiosError, retryCount + 1);
+    }
+    return Promise.reject(retryError);
+  }
+}
+
 // Add token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -18,12 +78,26 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle errors
+// Handle errors with 429 retry logic
 // CRITICAL: Do NOT reload on 401 - this causes infinite reload loops
 // Instead, let AuthContext handle auth errors gracefully
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error: AxiosError) => {
+    // Handle 429 with retry logic
+    if (error.response?.status === 429) {
+      try {
+        return await retryRequest(error);
+      } catch (retryError) {
+        // All retries failed - don't throw UI error, just log
+        console.warn('[API] All retries failed for 429 error, preserving UI state');
+        // Return a rejected promise but don't show error to user
+        // The UI will continue using cached data
+        return Promise.reject(retryError);
+      }
+    }
+
+    // Handle 401 errors
     if (error.response?.status === 401) {
       // Token expired or invalid - remove token but DON'T reload
       // AuthContext will handle re-authentication
@@ -34,6 +108,7 @@ api.interceptors.response.use(
       }
       // Do NOT reload - let the app handle auth state gracefully
     }
+
     return Promise.reject(error);
   }
 );

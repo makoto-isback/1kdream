@@ -1,4 +1,5 @@
 import api from './api';
+import { guardFetch } from '../utils/fetchGuard';
 
 export interface Bet {
   id: string;
@@ -16,6 +17,15 @@ export interface CreateBetDto {
   amount: number;
 }
 
+// Guarded fetch function to prevent duplicate simultaneous calls
+const guardedGetUserBets = guardFetch(
+  'getUserBets',
+  async (limit: number = 50): Promise<Bet[]> => {
+    const response = await api.get('/bets/my', { params: { limit } });
+    return response.data;
+  }
+);
+
 export const betsService = {
   async placeBet(blockNumber: number, amount: number): Promise<Bet> {
     const response = await api.post('/bets', { blockNumber, amount });
@@ -23,8 +33,7 @@ export const betsService = {
   },
 
   async getUserBets(limit = 50): Promise<Bet[]> {
-    const response = await api.get('/bets/my', { params: { limit } });
-    return response.data;
+    return guardedGetUserBets(limit);
   },
 };
 

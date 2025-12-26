@@ -1,8 +1,11 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import WebApp from '@twa-dev/sdk';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import WebApp from '@twa-dev/sdk'; // Imported for SDK initialization side effects
 import api from '../services/api';
 import { usersService, User } from '../services/users';
 import { socketService } from '../services/socket';
+import { createDebouncedFetch } from '../utils/debounce';
+import { guardFetch } from '../utils/fetchGuard';
 
 interface AuthContextType {
   user: User | null;
@@ -121,7 +124,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     socketService.disconnect();
   };
 
-  const refreshUser = async () => {
+  // Guarded and debounced fetch for user data
+  const debouncedFetchUser = useRef(
+    createDebouncedFetch(
+      guardFetch(
+        'refreshUser',
+        async () => {
+          const userData = await usersService.getMe();
+          return userData;
+        }
+      ),
+      3000 // 3 second debounce
+    )
+  ).current;
+
+  // Immediate refresh (for critical cases like initial auth)
+  const refreshUserImmediate = async () => {
     try {
       const userData = await usersService.getMe();
       setUser(userData);
@@ -141,6 +159,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Debounced refresh (for non-critical updates, socket-first)
+  const refreshUser = async () => {
+    try {
+      const userData = await debouncedFetchUser();
+      setUser(userData);
+      setAuthError(null);
+      setIsAuthReady(true);
+    } catch (error: any) {
+      console.error('[AUTH] Refresh user error:', error);
+      // Don't logout on debounced refresh failures - preserve UI state
+      // Only handle 401 for auth state
+      if (error?.response?.status === 401) {
+        setAuthError('Session expired');
+        setIsAuthReady(false);
+      }
+      // For other errors, preserve current user state (socket updates are primary)
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     let retryCount = 0;
@@ -152,7 +189,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         if (existingToken) {
           try {
-            await refreshUser();
+            // Use immediate refresh for initial auth (critical)
+            await refreshUserImmediate();
             // Connect Socket.IO if we have a valid token (singleton - only connects once)
             socketService.connect(existingToken);
             if (isMounted) {

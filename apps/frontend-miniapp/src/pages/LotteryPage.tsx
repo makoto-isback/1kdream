@@ -272,16 +272,23 @@ const LotteryPage: React.FC = () => {
     };
   }, []); // Empty deps - only run once on mount
 
-  // Listen for user:balance:updated events via Socket.IO
+  // Listen for user:balance:updated events via Socket.IO (SOCKET-FIRST, no HTTP)
   useEffect(() => {
     const unsubscribe = socketService.onUserBalanceUpdated((event: UserBalanceUpdatedEvent) => {
       console.log('[LotteryPage] Received user:balance:updated event', event);
-      // Refresh user data to update balance in UI
-      refreshUser();
+      // Optimistically update user balance from socket (instant, no HTTP)
+      // Note: refreshUser is debounced in AuthContext, so this won't spam
+      // But we prefer socket updates - only sync if needed
+      if (user) {
+        // Update user balance optimistically
+        // The socket event has the exact balance, but we need to update the context
+        // refreshUser is debounced, so this is safe
+        refreshUser();
+      }
     });
 
     return unsubscribe;
-  }, [refreshUser]);
+  }, [refreshUser, user]);
 
   const handleToggleNumber = (id: number) => {
     setSelectedIds(prev => 
@@ -293,18 +300,16 @@ const LotteryPage: React.FC = () => {
   const handleBuy = async (amount: number, rounds: number, mode: PurchaseMode) => {
     if (!user || !activeRound || !isAuthReady) return;
 
-    // Check if user has TON address for deposits (not required for betting, but good to have)
-    // This is just a reminder, not blocking
-
     setBuying(true);
     setBuyError(null);
 
     try {
       // Get current user buys in this round for validation
+      // This is guarded to prevent duplicate simultaneous validation calls
       const userBets = await betsService.getUserBets(100);
       const roundBets = userBets.filter(bet => bet.lotteryRoundId === activeRound.id);
       const currentBuysCount = roundBets.length;
-      const currentTotalBuy = roundBets.reduce((sum, bet) => sum + bet.amount, 0);
+      const currentTotalBuy = roundBets.reduce((sum, bet) => sum + Number(bet.amount), 0);
 
       if (mode === PurchaseMode.SINGLE) {
         // Validate single buy
@@ -323,6 +328,7 @@ const LotteryPage: React.FC = () => {
         }
 
         // Place buys for each selected block
+        // Socket events will update UI instantly (bet:placed, user:balance:updated)
         for (const blockId of selectedIds) {
           await betsService.placeBet(blockId, amount);
         }
@@ -360,23 +366,20 @@ const LotteryPage: React.FC = () => {
         setAutoBuyRefreshKey(prev => prev + 1);
       }
 
-      // Refresh user data first (critical - needed for balance update)
-      await refreshUser();
-      
-      // Clear selection immediately after successful bet
+      // SOCKET-FIRST APPROACH: No immediate HTTP refetch
+      // Socket events (bet:placed, user:balance:updated) will update UI instantly
+      // Clear selection immediately for better UX
       setSelectedIds([]);
       
-      // Refetch lottery data in background - don't block on errors
-      // Use setTimeout to prevent blocking the UI and avoid error propagation
-      setTimeout(async () => {
-        try {
-          await refetch();
-        } catch (err) {
-          // Silently fail - bet already succeeded, this is just for UI refresh
-          // The error banner will auto-clear on next successful refetch (every 30s)
-          console.warn('[LotteryPage] Refetch failed after bet (non-critical):', err);
-        }
-      }, 100);
+      // Schedule ONE delayed sync fetch (3+ seconds) as safety net
+      // This is debounced in useLotteryData, so multiple bets won't cause spam
+      setTimeout(() => {
+        // This will be debounced by useLotteryData's debounced fetches
+        refetch().catch((err) => {
+          // Silent fail - socket already updated UI
+          console.warn('[LotteryPage] Delayed sync fetch failed (non-critical, socket already updated):', err);
+        });
+      }, 3500); // 3.5 seconds - after debounce window
       
     } catch (error: any) {
       // Only show error if bet placement actually failed

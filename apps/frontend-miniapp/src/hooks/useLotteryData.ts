@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { lotteryService, LotteryRound } from '../services/lottery';
-import { betsService } from '../services/bets';
+import { betsService, Bet } from '../services/bets';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { socketService } from '../services/socket';
+import { createDebouncedFetch } from '../utils/debounce';
+import { guardFetch } from '../utils/fetchGuard';
 
 // Type for block statistics (optional overlay data)
 type BlockStats = {
@@ -17,12 +19,92 @@ export const useLotteryData = () => {
   const [userStake, setUserStake] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isAuthReady } = useAuth();
+  const { isAuthReady, user } = useAuth();
   
   // Track if we've ever successfully loaded a round (prevents showing error if we have cached data)
   const hasLoadedRoundRef = useRef(false);
   // Track if there's a fetch in progress (prevents race conditions)
   const isFetchingRef = useRef(false);
+  // Track user bets for current round (socket-first, HTTP sync only)
+  const userBetsRef = useRef<Bet[]>([]);
+  // Refs for socket handlers to avoid stale closures
+  const activeRoundRef = useRef<LotteryRound | null>(null);
+  const isAuthReadyRef = useRef(false);
+  const userRef = useRef(user);
+
+  // Debounced fetch for round stats (3 second debounce, shared across calls)
+  const debouncedFetchRoundStats = useRef(
+    createDebouncedFetch(
+      guardFetch(
+        'fetchRoundStats',
+        async (roundId: string) => {
+          const statsResponse = await api.get(`/lottery/round/${roundId}/stats`);
+          return statsResponse.data;
+        }
+      ),
+      3000
+    )
+  ).current;
+
+  // Debounced fetch for user bets (3 second debounce, shared across calls)
+  const debouncedFetchUserBets = useRef(
+    createDebouncedFetch(
+      guardFetch(
+        'fetchUserBets',
+        async () => {
+          const userBets = await betsService.getUserBets(100);
+          return userBets;
+        }
+      ),
+      3000
+    )
+  ).current;
+
+  // Update user stake from tracked bets
+  const updateUserStakeFromBets = useCallback((roundId: string | null) => {
+    if (!roundId) {
+      setUserStake(0);
+      return;
+    }
+    const roundBets = userBetsRef.current.filter(bet => bet.lotteryRoundId === roundId);
+    const stake = roundBets.reduce((sum, bet) => sum + Number(bet.amount), 0);
+    setUserStake(stake);
+  }, []);
+
+  // Sync user bets from server (debounced, only called when needed)
+  const syncUserBets = useCallback(async (roundId: string) => {
+    if (!isAuthReady) return;
+    
+    try {
+      const userBets = await debouncedFetchUserBets();
+      userBetsRef.current = userBets;
+      updateUserStakeFromBets(roundId);
+    } catch (err) {
+      // Silent fail - socket updates will handle it
+      console.warn('[useLotteryData] User bets sync failed (non-critical):', err);
+    }
+  }, [isAuthReady, debouncedFetchUserBets, updateUserStakeFromBets]);
+
+  // Sync round stats from server (debounced, only called when needed)
+  const syncRoundStats = useCallback(async (roundId: string) => {
+    try {
+      const statsData = await debouncedFetchRoundStats(roundId);
+      const blockStatsArray = statsData.blockStats || [];
+      
+      const statsMap = new Map<number, BlockStats>();
+      blockStatsArray.forEach((stat: any, index: number) => {
+        statsMap.set(index + 1, {
+          buyers: stat.totalBets || 0,
+          totalKyat: stat.totalAmount || 0,
+        });
+      });
+      
+      setBlockStats(statsMap);
+    } catch (err) {
+      // Silent fail - socket updates will handle it
+      console.warn('[useLotteryData] Round stats sync failed (non-critical):', err);
+    }
+  }, [debouncedFetchRoundStats]);
 
   const fetchData = async () => {
     // Prevent concurrent fetches
@@ -44,44 +126,13 @@ export const useLotteryData = () => {
         // We have a round - clear error and update state
         setError(null);
         setActiveRound(round);
+        activeRoundRef.current = round; // Update ref for socket handlers
         hasLoadedRoundRef.current = true;
 
-        // Get round stats to populate buyers and totalKyat per block
-        // This is optional - if it fails, blocks still render with default stats
-        try {
-          const statsResponse = await api.get(`/lottery/round/${round.id}/stats`);
-          const blockStatsArray = statsResponse.data.blockStats || [];
-
-          const statsMap = new Map<number, BlockStats>();
-          blockStatsArray.forEach((stat: any, index: number) => {
-            statsMap.set(index + 1, {
-              buyers: stat.totalBets || 0,
-              totalKyat: stat.totalAmount || 0,
-            });
-          });
-
-          setBlockStats(statsMap);
-        } catch (err) {
-          // Stats fetch failed - not critical, blocks still render with default stats
-          console.warn('[useLotteryData] Stats fetch failed, blocks will show with default values:', err);
-          setBlockStats(new Map()); // Clear stats, use defaults
-        }
-
-        // Get user bets for this round to calculate stake
-        // Only fetch if authenticated - this is optional
+        // Sync stats and user bets (debounced, won't spam)
+        syncRoundStats(round.id);
         if (isAuthReady) {
-          try {
-            const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-            if (token) {
-              const userBets = await betsService.getUserBets(100);
-              const roundBets = userBets.filter(bet => bet.lotteryRoundId === round.id);
-              const stake = roundBets.reduce((sum, bet) => sum + Number(bet.amount), 0);
-              setUserStake(stake);
-            }
-          } catch (err) {
-            // User bets fetch failed - not critical, stake stays 0
-            console.warn('[useLotteryData] User bets fetch failed:', err);
-          }
+          syncUserBets(round.id);
         }
       } else {
         // API returned null (no active round exists)
@@ -124,20 +175,27 @@ export const useLotteryData = () => {
     if (token) {
       socketService.connect(token);
 
-      // Subscribe to bet:placed events - update pool and stats immediately
+      // Subscribe to bet:placed events - update pool, stats, and user stake immediately (SOCKET-FIRST)
       const unsubscribeBet = socketService.onBetPlaced((data) => {
         console.log('[useLotteryData] Received bet:placed event', data);
         
+        // Use ref to avoid stale closure
+        const currentRound = activeRoundRef.current;
+        
         // Update active round pool if it's the current round
-        if (activeRound?.id === data.roundId) {
-          setActiveRound(prev => prev ? {
-            ...prev,
-            totalPool: data.totalPool,
-            winnerPool: data.winnerPool,
-            adminFee: data.adminFee,
-          } : null);
+        if (currentRound?.id === data.roundId) {
+          setActiveRound(prev => {
+            const updated = prev ? {
+              ...prev,
+              totalPool: data.totalPool,
+              winnerPool: data.winnerPool,
+              adminFee: data.adminFee,
+            } : null;
+            activeRoundRef.current = updated; // Update ref
+            return updated;
+          });
           
-          // Update block stats
+          // Update block stats from socket (instant, no HTTP)
           const statsMap = new Map<number, BlockStats>();
           data.blockStats.forEach((stat) => {
             statsMap.set(stat.blockNumber, {
@@ -146,14 +204,29 @@ export const useLotteryData = () => {
             });
           });
           setBlockStats(statsMap);
+
+          // Optimistically update user stake if this is the user's bet
+          // We'll sync from server later (debounced) to get exact value
+          // For now, we can't tell if it's the user's bet from the event, so we'll sync
+          // But we do it debounced to avoid spam
+          if (isAuthReadyRef.current && userRef.current) {
+            // Schedule a debounced sync (won't trigger immediately)
+            setTimeout(() => {
+              syncUserBets(data.roundId);
+            }, 100);
+          }
         }
       });
 
-      // Subscribe to round:stats:updated events
+      // Subscribe to round:stats:updated events (SOCKET-FIRST, no HTTP)
       const unsubscribeStats = socketService.onRoundStatsUpdated((data) => {
         console.log('[useLotteryData] Received round:stats:updated event', data);
         
-        if (activeRound?.id === data.roundId) {
+        // Use ref to avoid stale closure
+        const currentRound = activeRoundRef.current;
+        
+        if (currentRound?.id === data.roundId) {
+          // Update block stats instantly from socket
           const statsMap = new Map<number, BlockStats>();
           data.blockStats.forEach((stat) => {
             statsMap.set(stat.blockNumber, {
@@ -165,12 +238,12 @@ export const useLotteryData = () => {
         }
       });
 
-      // Subscribe to round:active:updated events
+      // Subscribe to round:active:updated events (SOCKET-FIRST, no HTTP)
       const unsubscribeRound = socketService.onActiveRoundUpdated((data) => {
         console.log('[useLotteryData] Received round:active:updated event', data);
         
-        // Update active round
-        setActiveRound({
+        // Update active round instantly from socket
+        const newRound = {
           id: data.id,
           roundNumber: data.roundNumber,
           status: data.status,
@@ -181,9 +254,23 @@ export const useLotteryData = () => {
           drawTime: data.drawTime, // Keep as string to match LotteryRound type
           winningBlock: data.winningBlock,
           drawnAt: data.drawnAt || null,
-        } as LotteryRound);
+        } as LotteryRound;
+        
+        setActiveRound(newRound);
+        activeRoundRef.current = newRound; // Update ref
         hasLoadedRoundRef.current = true;
         setError(null);
+
+        // If round changed, reset user bets and sync (debounced)
+        // Use refs to avoid stale closure
+        if (isAuthReadyRef.current && userRef.current) {
+          userBetsRef.current = [];
+          setUserStake(0);
+          // Sync user bets for new round (debounced)
+          setTimeout(() => {
+            syncUserBets(newRound.id);
+          }, 100);
+        }
       });
 
       // Cleanup on unmount
@@ -197,29 +284,24 @@ export const useLotteryData = () => {
     // Fallback: Keep a slow polling interval (60 seconds) as backup in case WebSocket fails
     const fallbackInterval = setInterval(fetchData, 60000);
     return () => clearInterval(fallbackInterval);
-  }, []); // Remove isAuthReady dependency - blocks don't need auth
+  }, [syncUserBets, syncRoundStats, updateUserStakeFromBets]); // Include dependencies for socket handlers
 
-  // Re-fetch user stake when auth becomes ready (optional enhancement)
+  // Update refs when values change
   useEffect(() => {
-    if (isAuthReady && activeRound) {
-      // Only fetch user stake, not blocking block rendering
-      const fetchUserStake = async () => {
-        try {
-          const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-          if (token) {
-            const userBets = await betsService.getUserBets(100);
-            const roundBets = userBets.filter(bet => bet.lotteryRoundId === activeRound.id);
-            const stake = roundBets.reduce((sum, bet) => sum + Number(bet.amount), 0);
-            setUserStake(stake);
-          }
-        } catch (err) {
-          // Silent fail - not critical
-          console.warn('[useLotteryData] User stake fetch failed:', err);
-        }
-      };
-      fetchUserStake();
+    isAuthReadyRef.current = isAuthReady;
+  }, [isAuthReady]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Sync user bets when round changes (debounced, only if needed)
+  useEffect(() => {
+    if (isAuthReady && activeRound && user) {
+      // Initial sync when round loads (debounced)
+      syncUserBets(activeRound.id);
     }
-  }, [isAuthReady, activeRound?.id]);
+  }, [isAuthReady, activeRound?.id, user, syncUserBets]);
 
   return {
     activeRound,
