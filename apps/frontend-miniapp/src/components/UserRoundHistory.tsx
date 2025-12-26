@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GlassCard } from './GlassCard';
 import { Language } from '../types/ui';
-import { betsService } from '../services/bets';
+import { Bet as BetServiceType } from '../services/bets';
 import { lotteryService } from '../services/lottery';
-import { useAuth } from '../contexts/AuthContext';
+import { userDataSync } from '../services/userDataSync';
 
 type Bet = {
   id: string;
@@ -39,11 +39,11 @@ export const UserRoundHistory: React.FC<Props> = ({ language, refreshKey }) => {
   const loadHistory = async () => {
     try {
       setLoading(true);
-      // Fetch user bets (limit 100)
-      const userBets: Bet[] = await betsService.getUserBets(100);
+      // Get user bets from UserDataSync (socket-first, no HTTP)
+      const userBets: BetType[] = userDataSync.getData('bets') || [];
       // Group by round
       const byRound = new Map<string, Bet[]>();
-      userBets.forEach((bet) => {
+      userBets.forEach((bet: BetType) => {
         const list = byRound.get(bet.lotteryRoundId) || [];
         list.push(bet);
         byRound.set(bet.lotteryRoundId, list);

@@ -185,6 +185,12 @@ class SocketService {
       
       // Authentication complete - NOW attach pending subscriptions
       this.attachPendingSubscriptions();
+      
+      // Emit socket:authenticated event for hydration trigger
+      console.log('🔌 [Socket] 🚀 Emitting socket:authenticated event');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('socket:authenticated', { detail: { userId: data.userId } }));
+      }
     });
   }
 

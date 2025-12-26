@@ -52,10 +52,15 @@ class UserDataSyncController {
 
   private subscribers: Map<string, Set<DataUpdateCallback>> = new Map();
   private socketConnected = false;
+  private hydratedOnce = false;
+  private isHydratingFlag = false;
+  private authReady = false;
 
   constructor() {
     // Monitor socket connection status
     this.setupSocketMonitoring();
+    // Listen for socket authentication event
+    this.setupSocketAuthListener();
   }
 
   /**
@@ -67,6 +72,32 @@ class UserDataSyncController {
     
     // Note: We can't directly subscribe to socket connection events here
     // Components should call checkSocketStatus() before making requests
+  }
+
+  /**
+   * Setup listener for socket authentication event
+   */
+  private setupSocketAuthListener(): void {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('socket:authenticated', () => {
+        console.log('📡 [UserDataSync] Received socket:authenticated event');
+        this.hydrateAfterSocketAuth();
+      });
+    }
+  }
+
+  /**
+   * Check if currently hydrating
+   */
+  isHydrating(): boolean {
+    return this.isHydratingFlag;
+  }
+
+  /**
+   * Check if auth is ready
+   */
+  isAuthReady(): boolean {
+    return this.authReady;
   }
 
   /**
@@ -85,8 +116,15 @@ class UserDataSyncController {
 
   /**
    * Enforce socket-first rule: block HTTP if socket is connected
+   * EXCEPT during controlled hydration after socket auth
    */
   private shouldBlockHttp(endpoint: string): boolean {
+    // Allow HTTP during controlled hydration (one-time after socket auth)
+    if (this.isHydratingFlag) {
+      console.log(`✅ [UserDataSync] HTTP ALLOWED for ${endpoint} - Controlled hydration in progress`);
+      return false;
+    }
+    
     const isConnected = this.checkSocketStatus();
     
     if (isConnected) {
@@ -203,6 +241,60 @@ class UserDataSyncController {
    */
   getData(dataType: string): any {
     return (this.state as any)[dataType] ?? null;
+  }
+
+  /**
+   * Get user data (convenience method)
+   */
+  getUser(): User | null {
+    return this.state.user;
+  }
+
+  /**
+   * Hydrate user data ONCE after socket authentication succeeds
+   * This is the ONLY controlled HTTP fetch allowed after socket auth
+   */
+  async hydrateAfterSocketAuth(): Promise<void> {
+    // Check if already hydrated
+    if (this.hydratedOnce) {
+      console.log('[UserDataSync] Already hydrated, skipping');
+      return;
+    }
+
+    // Check if socket is authenticated
+    if (!socketService.isSocketAuthenticated()) {
+      console.warn('[UserDataSync] Socket not authenticated, cannot hydrate');
+      return;
+    }
+
+    // Set hydrating flag
+    this.isHydratingFlag = true;
+    console.log('📡 [UserDataSync] Hydrating after socket auth');
+
+    try {
+      // Allow ONE controlled HTTP fetch for user data
+      const userData = await usersService.getMe();
+      this.updateState('user', userData);
+      console.log('✅ [UserDataSync] User data hydrated');
+
+      // Allow ONE controlled HTTP fetch for bets
+      const betsData = await betsService.getUserBets(100);
+      this.updateState('bets', betsData);
+      console.log('✅ [UserDataSync] Bets data hydrated');
+
+      // Mark as hydrated
+      this.hydratedOnce = true;
+      this.authReady = true;
+      console.log('✅ [UserDataSync] Hydration complete, authReady = true');
+
+      // Notify subscribers that auth is ready
+      this.notifySubscribers('authReady', true);
+    } catch (error: any) {
+      console.error('[UserDataSync] Hydration failed:', error);
+      // Don't mark as hydrated on error - allow retry on next socket auth
+    } finally {
+      this.isHydratingFlag = false;
+    }
   }
 
   /**

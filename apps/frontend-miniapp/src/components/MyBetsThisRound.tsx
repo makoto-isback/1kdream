@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { GlassCard } from './GlassCard';
 import { Language } from '../types/ui';
-import { betsService, Bet } from '../services/bets';
+import { Bet } from '../services/bets';
 import { useAuth } from '../contexts/AuthContext';
+import { userDataSync } from '../services/userDataSync';
 
 interface Props {
   language: Language;
@@ -15,28 +16,31 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
   const [bets, setBets] = useState<Bet[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Subscribe to UserDataSync for bets (socket-first, no HTTP)
   useEffect(() => {
     if (!roundId || !isAuthReady || !user) {
       setBets([]);
       return;
     }
-    loadMyBets();
-  }, [roundId, refreshKey, isAuthReady, user]);
 
-  const loadMyBets = async () => {
-    if (!roundId) return;
-    
-    try {
-      setLoading(true);
-      const allBets = await betsService.getUserBets(100);
-      const roundBets = allBets.filter(bet => bet.lotteryRoundId === roundId);
+    // Subscribe to bets from UserDataSync
+    const unsubscribe = userDataSync.subscribe('bets', (allBets: Bet[]) => {
+      if (allBets && roundId) {
+        const roundBets = allBets.filter(bet => bet.lotteryRoundId === roundId);
+        setBets(roundBets);
+        setLoading(false);
+      }
+    });
+
+    // Get initial bets from cache
+    const cachedBets = userDataSync.getData('bets') || [];
+    if (cachedBets.length > 0 && roundId) {
+      const roundBets = cachedBets.filter((bet: Bet) => bet.lotteryRoundId === roundId);
       setBets(roundBets);
-    } catch (error) {
-      console.error('Error loading bets for current round:', error);
-    } finally {
-      setLoading(false);
     }
-  };
+
+    return unsubscribe;
+  }, [roundId, refreshKey, isAuthReady, user]);
 
   // Group bets by block number
   const groupedBets = bets.reduce((acc, bet) => {

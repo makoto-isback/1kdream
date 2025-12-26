@@ -171,18 +171,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // UserDataSync will update via subscription
   };
 
-  // Subscribe to UserDataSync for user updates
+  // Subscribe to UserDataSync for user updates and authReady
   useEffect(() => {
-    const unsubscribe = userDataSync.subscribe('user', (userData: User | null) => {
+    const unsubscribeUser = userDataSync.subscribe('user', (userData: User | null) => {
       if (userData) {
         console.log('[AUTH] User updated from UserDataSync');
         setUser(userData);
         setAuthError(null);
-        setIsAuthReady(true);
       }
     });
 
-    return unsubscribe;
+    const unsubscribeAuthReady = userDataSync.subscribe('authReady', (ready: boolean) => {
+      if (ready) {
+        console.log('[AUTH] UserDataSync authReady = true');
+        setIsAuthReady(true);
+        setAuthError(null);
+      }
+    });
+
+    // Check initial authReady state
+    if (userDataSync.isAuthReady()) {
+      setIsAuthReady(true);
+    }
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeAuthReady();
+    };
   }, []);
 
   useEffect(() => {

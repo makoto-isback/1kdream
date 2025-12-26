@@ -4,7 +4,7 @@ import { Language } from '../types/ui';
 import { TRANSLATIONS } from '../constants/translations';
 import { LotteryRound, lotteryService } from '../services/lottery';
 import { useAuth } from '../contexts/AuthContext';
-import { betsService } from '../services/bets';
+import { userDataSync } from '../services/userDataSync';
 
 interface Props {
   language: Language;
@@ -102,18 +102,19 @@ export const WinningPopup: React.FC<Props> = ({
     }
 
     try {
-      const userBets = await betsService.getUserBets(100);
-      const roundBets = userBets.filter(bet => bet.lotteryRoundId === roundData.id);
-      const winningBets = roundBets.filter(bet => bet.blockNumber === roundData.winningBlock);
+      // Get user bets from UserDataSync (socket-first, no HTTP)
+      const userBets: any[] = userDataSync.getData('bets') || [];
+      const roundBets = userBets.filter((bet: any) => bet.lotteryRoundId === roundData.id);
+      const winningBets = roundBets.filter((bet: any) => bet.blockNumber === roundData.winningBlock);
       
       if (winningBets.length > 0) {
         setUserWon(true);
         // Calculate user's share of the winner pool
         const totalWinningAmount = roundBets
-          .filter(bet => bet.blockNumber === roundData.winningBlock)
-          .reduce((sum, bet) => sum + bet.amount, 0);
+          .filter((bet: any) => bet.blockNumber === roundData.winningBlock)
+          .reduce((sum: number, bet: any) => sum + bet.amount, 0);
         
-        const userWinningAmount = winningBets.reduce((sum, bet) => sum + bet.amount, 0);
+        const userWinningAmount = winningBets.reduce((sum: number, bet: any) => sum + bet.amount, 0);
         const winnerPool = parseFloat(String(roundData.winnerPool || 0));
         const payout = (userWinningAmount / totalWinningAmount) * winnerPool;
         setUserPayout(payout);

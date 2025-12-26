@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { socketService } from './socket';
+import { userDataSync } from './userDataSync';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -77,14 +78,21 @@ async function retryRequest(
 // Add token to requests
 api.interceptors.request.use((config) => {
   // 🔴 HARD BLOCK: User-scoped endpoints require socket authentication
+  // EXCEPT during controlled hydration after socket auth
   // This must run BEFORE retry logic and rate limiter
   if (config.url) {
     const isUserScoped = USER_SCOPED_ENDPOINTS.some(endpoint => config.url?.includes(endpoint));
-      if (isUserScoped) {
-      if (!socketService.isSocketAuthenticated()) {
-        console.warn(`[API BLOCKED] Socket not authenticated: ${config.url}`);
+    if (isUserScoped) {
+      const socketAuth = socketService.isSocketAuthenticated();
+      const isHydrating = userDataSync.isHydrating();
+      
+      // Allow ONLY when socket is authenticated AND UserDataSync is hydrating
+      if (!socketAuth || !isHydrating) {
+        console.warn(`[API BLOCKED] User-scoped endpoint blocked: ${config.url} (socketAuth: ${socketAuth}, isHydrating: ${isHydrating})`);
         return Promise.reject(new Error('SOCKET_NOT_READY'));
       }
+      
+      console.log(`✅ [API] User-scoped endpoint ALLOWED during hydration: ${config.url}`);
     }
   }
 
