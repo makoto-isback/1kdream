@@ -111,6 +111,15 @@ class UserDataSyncController {
         
         console.log(`[BETS UPDATE] user:bets:updated socket -> incoming: ${incomingBets.length}, current: ${currentBets.length}`);
         
+        // 🔍 DEBUG: Log roundIds in incoming bets
+        const incomingRoundIds = [...new Set(incomingBets.map((b: any) => b.lotteryRoundId || b.roundId))];
+        const currentRoundIds = [...new Set(currentBets.map((b: Bet) => b.lotteryRoundId))];
+        console.log(`[BETS UPDATE] 🔍 RoundId check:`, {
+          incomingRoundIds,
+          currentRoundIds,
+          activeRoundId: this.state.activeRound?.id,
+        });
+        
         // Only replace if incoming has more or equal bets (prevents REST overwrites)
         if (incomingBets.length >= currentBets.length) {
           console.log(`[BETS UPDATE] ✅ user:bets:updated socket -> ${incomingBets.length} bets (replacing ${currentBets.length})`);
@@ -431,8 +440,39 @@ class UserDataSyncController {
    * Update state and notify subscribers
    */
   private updateState(dataType: keyof UserDataState, data: any): void {
+    // 🔍 DEBUG: Log bets mutations with detailed state tracking
+    if (dataType === 'bets') {
+      const previousLength = Array.isArray(this.state.bets) ? this.state.bets.length : (this.state.bets === null ? 0 : 'null');
+      const incomingLength = Array.isArray(data) ? data.length : (data === null ? 0 : 'null');
+      const previousBets = this.state.bets || [];
+      const incomingBets = data || [];
+      
+      console.log(`[BETS STATE MUTATION] 🔍 updateState('bets') called:`, {
+        previousLength,
+        incomingLength,
+        previousBets: previousBets.map((b: Bet) => ({ id: b.id, roundId: b.lotteryRoundId, block: b.blockNumber })),
+        incomingBets: incomingBets.map((b: Bet) => ({ id: b.id, roundId: b.lotteryRoundId, block: b.blockNumber })),
+      });
+    }
+    
     (this.state as any)[dataType] = data;
     this.state.lastSync[dataType as keyof typeof this.state.lastSync] = Date.now();
+    
+    // 🔍 DEBUG: Log final state after mutation
+    if (dataType === 'bets') {
+      const finalLength = Array.isArray(this.state.bets) ? this.state.bets.length : (this.state.bets === null ? 0 : 'null');
+      console.log(`[BETS STATE MUTATION] ✅ Final state length: ${finalLength}`);
+      
+      // FINAL DEBUG ASSERTION
+      if (this.state.bets && Array.isArray(this.state.bets) && this.state.bets.length > 0) {
+        console.log('✅ [BETS STATE ASSERTION] Bets exist in state, UI MUST show them:', {
+          count: this.state.bets.length,
+          roundIds: [...new Set(this.state.bets.map((b: Bet) => b.lotteryRoundId))],
+          blocks: this.state.bets.map((b: Bet) => b.blockNumber),
+        });
+      }
+    }
+    
     this.notifySubscribers(dataType, data);
   }
 

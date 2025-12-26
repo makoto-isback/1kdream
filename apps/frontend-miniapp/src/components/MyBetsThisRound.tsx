@@ -26,11 +26,51 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
 
     // Subscribe to bets from UserDataSync
     const unsubscribe = userDataSync.subscribe('bets', (allBets: Bet[]) => {
+      console.log(`[MyBetsThisRound] 🔔 Subscription callback fired:`, {
+        allBetsLength: allBets?.length || 0,
+        roundId,
+        roundIdType: typeof roundId,
+        activeRoundId: userDataSync.getData('activeRound')?.id,
+      });
+      
       if (allBets && roundId) {
-        const roundBets = allBets.filter(bet => bet.lotteryRoundId === roundId);
+        // 🔍 DEBUG: Log every bet's roundId before filtering
+        console.log(`[MyBetsThisRound] 🔍 Filtering bets by roundId:`, {
+          targetRoundId: roundId,
+          targetRoundIdType: typeof roundId,
+          allBets: allBets.map(bet => ({
+            id: bet.id,
+            lotteryRoundId: bet.lotteryRoundId,
+            lotteryRoundIdType: typeof bet.lotteryRoundId,
+            blockNumber: bet.blockNumber,
+            matches: bet.lotteryRoundId === roundId,
+            strictEqual: bet.lotteryRoundId === roundId,
+            looseEqual: bet.lotteryRoundId == roundId,
+          })),
+        });
+        
+        const roundBets = allBets.filter(bet => {
+          const matches = bet.lotteryRoundId === roundId;
+          if (!matches && bet.lotteryRoundId && roundId) {
+            console.log(`[MyBetsThisRound] ⚠️ Bet ${bet.id} roundId mismatch:`, {
+              betRoundId: bet.lotteryRoundId,
+              targetRoundId: roundId,
+              types: { bet: typeof bet.lotteryRoundId, target: typeof roundId },
+            });
+          }
+          return matches;
+        });
+        
+        console.log(`[MyBetsThisRound] ✅ Filtered ${roundBets.length} bets for round ${roundId}`);
         setBets(roundBets);
         setLoading(false);
       } else {
+        console.log(`[MyBetsThisRound] ⚠️ No bets or no roundId:`, {
+          hasBets: !!allBets,
+          betsLength: allBets?.length || 0,
+          hasRoundId: !!roundId,
+          roundId,
+        });
         setBets([]);
         setLoading(false);
       }

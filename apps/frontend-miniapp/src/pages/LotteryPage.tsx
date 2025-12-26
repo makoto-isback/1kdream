@@ -264,11 +264,20 @@ const LotteryPage: React.FC = () => {
       // For validation, use cached data from UserDataSync state
       let userBets = userDataSync.getData('bets') || [];
       
+      // 🔍 DEBUG: Log bets state before validation
+      console.log(`[LotteryPage] 🔍 Pre-validation bets check:`, {
+        cachedBetsLength: userBets.length,
+        socketConnected: socketService.isConnected(),
+        willSync: userBets.length === 0 && !socketService.isConnected(),
+      });
+      
       // If no bets in cache and socket is disconnected, do a one-time sync for validation
+      // NOTE: syncBets is protected - it won't overwrite if bets !== null
       if (userBets.length === 0 && !socketService.isConnected()) {
-        console.log('[LotteryPage] No bets in cache, syncing for validation (socket disconnected)');
+        console.log('[LotteryPage] ⚠️ No bets in cache, syncing for validation (socket disconnected)');
         const syncedBets = await userDataSync.syncBets(100);
         if (syncedBets) {
+          console.log(`[LotteryPage] ✅ Synced ${syncedBets.length} bets for validation`);
           userBets = syncedBets;
         }
       }
