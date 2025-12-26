@@ -93,99 +93,45 @@ export const useLotteryData = () => {
         }
       });
 
-      // Subscribe to bet:placed events - update pool and stats immediately (SOCKET-FIRST)
-      const unsubscribeBet = socketService.onBetPlaced((data) => {
-        console.log('[useLotteryData] Received bet:placed event', data);
-        
-        // Use ref to avoid stale closure
-        const currentRound = activeRoundRef.current;
-        
-        // Update active round pool if it's the current round
-        if (currentRound?.id === data.roundId) {
-          setActiveRound(prev => {
-            const updated = prev ? {
-              ...prev,
-              totalPool: data.totalPool,
-              winnerPool: data.winnerPool,
-              adminFee: data.adminFee,
-            } : null;
-            activeRoundRef.current = updated; // Update ref
-            return updated;
-          });
-          
-          // Update block stats from socket (instant, no HTTP)
+      // Subscribe to UserDataSync for round stats
+      // Round stats are updated by UserDataSync from socket events (bet:placed, round:stats:updated)
+      // PERSISTENT: Socket subscriptions live in UserDataSync, never unsubscribe here
+      const unsubscribeRoundStats = userDataSync.subscribe('roundStats', (roundStatsData: { roundId: string; stats: Record<number, { buyers: number; totalKyat: number }> } | null) => {
+        console.log('[useLotteryData] Round stats subscription callback fired:', roundStatsData);
+        if (roundStatsData && roundStatsData.stats) {
+          // Convert object back to Map
           const statsMap = new Map<number, BlockStats>();
-          data.blockStats.forEach((stat) => {
-            statsMap.set(stat.blockNumber, {
-              buyers: stat.totalBets || 0,
-              totalKyat: stat.totalAmount || 0,
+          Object.entries(roundStatsData.stats).forEach(([blockNum, stat]) => {
+            statsMap.set(parseInt(blockNum), {
+              buyers: stat.buyers,
+              totalKyat: stat.totalKyat,
             });
           });
           setBlockStats(statsMap);
         }
       });
 
-      // Subscribe to round:stats:updated events (SOCKET-FIRST, no HTTP)
-      const unsubscribeStats = socketService.onRoundStatsUpdated((data) => {
-        console.log('[useLotteryData] Received round:stats:updated event', data);
-        
-        // Use ref to avoid stale closure
-        const currentRound = activeRoundRef.current;
-        
-        if (currentRound?.id === data.roundId) {
-          // Update block stats instantly from socket
-          const statsMap = new Map<number, BlockStats>();
-          data.blockStats.forEach((stat) => {
-            statsMap.set(stat.blockNumber, {
-              buyers: stat.totalBets || 0,
-              totalKyat: stat.totalAmount || 0,
-            });
+      // Sync initial round stats from UserDataSync
+      const initialRoundStats = userDataSync.getData('roundStats');
+      if (initialRoundStats && initialRoundStats.stats) {
+        const statsMap = new Map<number, BlockStats>();
+        Object.entries(initialRoundStats.stats).forEach(([blockNum, stat]: [string, any]) => {
+          statsMap.set(parseInt(blockNum), {
+            buyers: stat.buyers,
+            totalKyat: stat.totalKyat,
           });
-          setBlockStats(statsMap);
-        }
-      });
-
-      // Subscribe to round:active:updated events (SOCKET-FIRST, no HTTP)
-      const unsubscribeRoundSocket = socketService.onActiveRoundUpdated((data) => {
-        console.log('[useLotteryData] Received round:active:updated event', data);
-        
-        // Update active round instantly from socket
-        const newRound = {
-          id: data.id,
-          roundNumber: data.roundNumber,
-          status: data.status,
-          totalPool: data.totalPool,
-          winnerPool: data.winnerPool,
-          adminFee: data.adminFee,
-          totalBets: data.totalBets,
-          drawTime: data.drawTime,
-          winningBlock: data.winningBlock,
-          drawnAt: data.drawnAt || null,
-        } as LotteryRound;
-        
-        setActiveRound(newRound);
-        activeRoundRef.current = newRound; // Update ref
-        hasLoadedRoundRef.current = true;
-        setError(null);
-
-        // Update UserDataSync
-        userDataSync.updateActiveRoundFromSocket(newRound);
-
-        // If round changed, reset user bets for NEW round only
-        // Don't reset during auth transitions - only when round actually changes
-        if (isAuthReady && user && activeRoundRef.current?.id !== newRound.id) {
-          userBetsRef.current = [];
-          setUserStake(0);
-        }
-      });
+        });
+        setBlockStats(statsMap);
+      }
 
       // Cleanup on unmount
+      // NOTE: Socket subscriptions (bet:placed, round:stats:updated, round:active:updated) 
+      // are handled by UserDataSync and persist for app lifetime - do NOT unsubscribe here
       return () => {
         unsubscribeRound();
         unsubscribeBets();
-        unsubscribeBet();
-        unsubscribeStats();
-        unsubscribeRoundSocket();
+        unsubscribeRoundStats();
+        // DO NOT unsubscribe socket events - they live in UserDataSync
       };
     }
 

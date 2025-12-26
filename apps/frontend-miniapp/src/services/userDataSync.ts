@@ -91,6 +91,7 @@ class UserDataSyncController {
 
   /**
    * Setup socket event listeners for user data updates
+   * CRITICAL: These subscriptions persist for app lifetime - never unsubscribe
    */
   private setupSocketEventListeners(): void {
     // Listen for user balance updates from socket
@@ -105,6 +106,93 @@ class UserDataSyncController {
       if (data.bets) {
         this.updateBetsFromSocket(data.bets);
       }
+    });
+
+    // Listen for bet:placed events - update round stats immediately
+    // PERSISTENT: Never unsubscribe - lives for app lifetime
+    socketService.onBetPlaced((data: {
+      roundId: string;
+      blockNumber: number;
+      amount: number;
+      totalPool: number;
+      winnerPool: number;
+      adminFee: number;
+      blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+    }) => {
+      console.log('📡 [UserDataSync] Received bet:placed socket event', data);
+      
+      // Update active round pool if it's the current round
+      const currentRound = this.state.activeRound;
+      if (currentRound?.id === data.roundId) {
+        const updatedRound = {
+          ...currentRound,
+          totalPool: data.totalPool,
+          winnerPool: data.winnerPool,
+          adminFee: data.adminFee,
+        };
+        this.updateState('activeRound', updatedRound);
+      }
+
+      // Update round stats from blockStats
+      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
+      data.blockStats.forEach((stat) => {
+        statsMap.set(stat.blockNumber, {
+          buyers: stat.totalBets || 0,
+          totalKyat: stat.totalAmount || 0,
+        });
+      });
+      this.updateRoundStatsFromSocket(data.roundId, statsMap);
+    });
+
+    // Listen for round:stats:updated events - update block stats
+    // PERSISTENT: Never unsubscribe - lives for app lifetime
+    socketService.onRoundStatsUpdated((data: {
+      roundId: string;
+      blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+    }) => {
+      console.log('📡 [UserDataSync] Received round:stats:updated socket event', data);
+      
+      // Update round stats from blockStats
+      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
+      data.blockStats.forEach((stat) => {
+        statsMap.set(stat.blockNumber, {
+          buyers: stat.totalBets || 0,
+          totalKyat: stat.totalAmount || 0,
+        });
+      });
+      this.updateRoundStatsFromSocket(data.roundId, statsMap);
+    });
+
+    // Listen for round:active:updated events - update active round
+    // PERSISTENT: Never unsubscribe - lives for app lifetime
+    socketService.onActiveRoundUpdated((data: {
+      id: string;
+      roundNumber: number;
+      status: string;
+      totalPool: number;
+      winnerPool: number;
+      adminFee: number;
+      totalBets: number;
+      drawTime: string;
+      winningBlock: number | null;
+      drawnAt: string | null;
+    }) => {
+      console.log('📡 [UserDataSync] Received round:active:updated socket event', data);
+      
+      const newRound: LotteryRound = {
+        id: data.id,
+        roundNumber: data.roundNumber,
+        status: data.status,
+        totalPool: data.totalPool,
+        winnerPool: data.winnerPool,
+        adminFee: data.adminFee,
+        totalBets: data.totalBets,
+        drawTime: data.drawTime, // Already a string from socket
+        winningBlock: data.winningBlock,
+        drawnAt: data.drawnAt || null, // Already a string from socket
+      };
+      
+      this.updateActiveRoundFromSocket(newRound);
     });
   }
 
@@ -460,10 +548,16 @@ class UserDataSyncController {
 
   /**
    * Update round stats from socket event
+   * stats is a Map<number, { buyers: number; totalKyat: number }>
    */
-  updateRoundStatsFromSocket(roundId: string, stats: any): void {
+  updateRoundStatsFromSocket(roundId: string, stats: Map<number, { buyers: number; totalKyat: number }>): void {
     console.log(`📡 [UserDataSync] Updating round stats from socket (socket-first) for round ${roundId}`);
-    this.updateState('roundStats', { roundId, stats });
+    // Convert Map to object for storage, but keep roundId for reference
+    const statsObj: Record<number, { buyers: number; totalKyat: number }> = {};
+    stats.forEach((value, key) => {
+      statsObj[key] = value;
+    });
+    this.updateState('roundStats', { roundId, stats: statsObj });
   }
 
   /**
