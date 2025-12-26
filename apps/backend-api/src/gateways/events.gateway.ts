@@ -3,11 +3,14 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, Inject, forwardRef } from '@nestjs/common';
+import { Logger, Inject, forwardRef, OnModuleDestroy } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
 import { UsersService } from '../modules/users/users.service';
 import { LotteryService } from '../modules/lottery/lottery.service';
 import { BetsService } from '../modules/bets/bets.service';
@@ -23,12 +26,14 @@ interface AuthenticatedSocket extends Socket {
   },
   namespace: '/events',
 })
-export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
   private connectedClients = new Map<string, AuthenticatedSocket>();
+  private redisPubClient: ReturnType<typeof createClient> | null = null;
+  private redisSubClient: ReturnType<typeof createClient> | null = null;
 
   constructor(
     private usersService: UsersService,
@@ -37,6 +42,75 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Inject(forwardRef(() => BetsService))
     private betsService: BetsService,
   ) {}
+
+  /**
+   * Initialize Redis adapter for multi-instance Socket.IO scaling
+   * This ensures events emitted on one Railway instance propagate to all instances
+   */
+  async afterInit(server: Server) {
+    const redisUrl = process.env.REDIS_URL;
+    
+    if (!redisUrl) {
+      this.logger.warn('⚠️ [EventsGateway] REDIS_URL not set - Redis adapter disabled (single instance only)');
+      this.logger.warn('⚠️ [EventsGateway] Multi-instance realtime updates will NOT work without Redis');
+      return;
+    }
+
+    try {
+      this.logger.log('🔌 [EventsGateway] Initializing Redis adapter for multi-instance scaling...');
+      this.logger.log(`🔌 [EventsGateway] Redis URL: ${redisUrl.replace(/:[^:@]+@/, ':****@')}`); // Mask password in logs
+
+      // Create Redis pub/sub clients
+      this.redisPubClient = createClient({ url: redisUrl });
+      this.redisSubClient = this.redisPubClient.duplicate();
+
+      // Handle connection errors
+      this.redisPubClient.on('error', (err) => {
+        this.logger.error('❌ [EventsGateway] Redis pub client error:', err);
+      });
+
+      this.redisSubClient.on('error', (err) => {
+        this.logger.error('❌ [EventsGateway] Redis sub client error:', err);
+      });
+
+      // Connect both clients
+      await Promise.all([
+        this.redisPubClient.connect(),
+        this.redisSubClient.connect(),
+      ]);
+
+      this.logger.log('✅ [EventsGateway] Redis clients connected');
+
+      // Attach Redis adapter to Socket.IO server
+      server.adapter(createAdapter(this.redisPubClient, this.redisSubClient));
+
+      this.logger.log('✅ [EventsGateway] Redis adapter attached to Socket.IO server');
+      this.logger.log('✅ [EventsGateway] Multi-instance realtime updates enabled');
+      this.logger.log('✅ [EventsGateway] Events will propagate across ALL Railway instances');
+    } catch (error) {
+      this.logger.error('❌ [EventsGateway] Failed to initialize Redis adapter:', error);
+      this.logger.error('❌ [EventsGateway] Multi-instance realtime updates will NOT work');
+      this.logger.error('❌ [EventsGateway] Falling back to single-instance mode');
+      
+      // Clean up on error
+      if (this.redisPubClient) {
+        try {
+          await this.redisPubClient.quit();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      if (this.redisSubClient) {
+        try {
+          await this.redisSubClient.quit();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      this.redisPubClient = null;
+      this.redisSubClient = null;
+    }
+  }
 
   async handleConnection(@ConnectedSocket() client: AuthenticatedSocket) {
     const isDev = process.env.NODE_ENV === 'development';
@@ -90,6 +164,11 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         client.userId = userId;
         this.connectedClients.set(client.id, client);
+        
+        // Join user-specific room for cross-instance user targeting
+        // With Redis adapter, this allows emitToUser to reach clients on all instances
+        client.join(`user:${userId}`);
+        
         this.logger.log(`Client ${client.id} connected (User: ${userId})`);
 
         // Send connection confirmation
@@ -134,6 +213,28 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
+   * Cleanup Redis connections on module destroy
+   */
+  async onModuleDestroy() {
+    if (this.redisPubClient) {
+      try {
+        await this.redisPubClient.quit();
+        this.logger.log('✅ [EventsGateway] Redis pub client disconnected');
+      } catch (error) {
+        this.logger.error('❌ [EventsGateway] Error disconnecting Redis pub client:', error);
+      }
+    }
+    if (this.redisSubClient) {
+      try {
+        await this.redisSubClient.quit();
+        this.logger.log('✅ [EventsGateway] Redis sub client disconnected');
+      } catch (error) {
+        this.logger.error('❌ [EventsGateway] Error disconnecting Redis sub client:', error);
+      }
+    }
+  }
+
+  /**
    * Emit round:completed event to all connected clients
    * Called immediately after round completion transaction commits
    */
@@ -169,18 +270,14 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /**
    * Emit event to specific user
+   * Uses Socket.IO rooms for cross-instance targeting with Redis adapter
    */
   emitToUser(userId: string, event: string, data: any) {
-    let emittedCount = 0;
-    this.connectedClients.forEach((client) => {
-      if (client.userId === userId) {
-        client.emit(event, data);
-        emittedCount++;
-      }
-    });
-    if (emittedCount > 0) {
-      this.logger.log(`📡 [EventsGateway] Emitted ${event} to user ${userId} (${emittedCount} client(s))`);
-    }
+    // Use Socket.IO room to target user across all instances
+    // With Redis adapter, this reaches clients on ALL Railway instances
+    const room = `user:${userId}`;
+    this.server.to(room).emit(event, data);
+    this.logger.log(`📡 [EventsGateway] Emitted ${event} to user ${userId} (room: ${room})`);
   }
 
   /**
