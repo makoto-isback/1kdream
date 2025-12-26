@@ -152,8 +152,9 @@ export const useLotteryData = () => {
         // Update UserDataSync
         userDataSync.updateActiveRoundFromSocket(newRound);
 
-        // If round changed, reset user bets
-        if (isAuthReady && user) {
+        // If round changed, reset user bets for NEW round only
+        // Don't reset during auth transitions - only when round actually changes
+        if (isAuthReady && user && activeRoundRef.current?.id !== newRound.id) {
           userBetsRef.current = [];
           setUserStake(0);
         }

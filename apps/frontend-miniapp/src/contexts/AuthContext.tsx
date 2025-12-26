@@ -164,20 +164,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Subscribe to UserDataSync for user updates and authReady
+  // CRITICAL: Subscriptions persist across auth transitions
+  // Only unsubscribe on explicit logout or component unmount
   useEffect(() => {
     const unsubscribeUser = userDataSync.subscribe('user', (userData: User | null) => {
       if (userData) {
         console.log('[AUTH] User updated from UserDataSync');
         setUser(userData);
         setAuthError(null);
+      } else if (isAuthReady === false) {
+        // Only clear user if authReady is false (explicit logout)
+        setUser(null);
       }
     });
 
     const unsubscribeAuthReady = userDataSync.subscribe('authReady', (ready: boolean) => {
       if (ready) {
-        console.log('[AUTH] UserDataSync authReady = true');
+        console.log('[AUTH] UserDataSync authReady = true (TERMINAL)');
         setIsAuthReady(true);
         setAuthError(null);
+        // TERMINAL: Once true, never reverts to false
       }
     });
 
@@ -186,11 +192,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsAuthReady(true);
     }
 
+    // Cleanup ONLY on component unmount (not on auth transitions)
     return () => {
       unsubscribeUser();
       unsubscribeAuthReady();
     };
-  }, []);
+  }, []); // Empty deps: subscriptions persist across auth transitions
 
   useEffect(() => {
     let isMounted = true;

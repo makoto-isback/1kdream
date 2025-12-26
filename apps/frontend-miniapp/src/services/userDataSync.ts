@@ -109,9 +109,24 @@ class UserDataSyncController {
 
   /**
    * Check if auth is ready
+   * TERMINAL: Once true, never reverts to false (unless explicit logout)
    */
   isAuthReady(): boolean {
     return this.authReady;
+  }
+
+  /**
+   * Explicit logout - reset auth state (only called on explicit logout)
+   */
+  logout(): void {
+    console.log('[UserDataSync] Explicit logout - resetting auth state');
+    this.hydratedOnce = false;
+    this.authReady = false;
+    this.state.user = null;
+    this.state.bets = [];
+    this.state.autobetPlans = [];
+    this.notifySubscribers('user', null);
+    this.notifySubscribers('authReady', false);
   }
 
   /**
@@ -290,31 +305,35 @@ class UserDataSyncController {
     console.log('📡 [UserDataSync] Hydrating after socket auth (socket-only, no HTTP)');
 
     try {
+      // Preserve existing user data if it exists (e.g., from login response seed)
+      const existingUser = this.state.user;
+      
       // Create minimal user object from socket auth payload
       // Balance will be populated via socket events (user:balance:updated)
+      // BUT: Preserve balance if it already exists (from login seed)
       const initialUser: User = {
         id: userId,
-        telegramId: '', // Will be populated by socket events if needed
-        username: null,
-        firstName: null,
-        lastName: null,
-        kyatBalance: 0, // Will be updated via user:balance:updated socket event
-        points: 0, // Will be updated via user:balance:updated socket event
-        tonAddress: null,
-        isAdmin: false, // Will be updated via socket events if needed
-        isActivated: false,
-        activatedAt: null,
-        createdAt: new Date().toISOString(),
+        telegramId: existingUser?.telegramId || '', // Preserve if exists
+        username: existingUser?.username || null, // Preserve if exists
+        firstName: existingUser?.firstName || null, // Preserve if exists
+        lastName: existingUser?.lastName || null, // Preserve if exists
+        kyatBalance: existingUser?.kyatBalance || 0, // PRESERVE existing balance, don't reset to 0
+        points: existingUser?.points || 0, // PRESERVE existing points, don't reset to 0
+        tonAddress: existingUser?.tonAddress || null, // Preserve if exists
+        isAdmin: existingUser?.isAdmin || false, // Preserve if exists
+        isActivated: existingUser?.isActivated || false, // Preserve if exists
+        activatedAt: existingUser?.activatedAt || null, // Preserve if exists
+        createdAt: existingUser?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
       this.updateState('user', initialUser);
-      console.log('✅ [UserDataSync] Initial user state seeded from socket auth (userId:', userId, ')');
+      console.log('✅ [UserDataSync] Initial user state seeded from socket auth (userId:', userId, ', balance preserved:', initialUser.kyatBalance, ')');
 
-      // Mark as hydrated
+      // Mark as hydrated (TERMINAL: once true, never revert)
       this.hydratedOnce = true;
       this.authReady = true;
-      console.log('✅ [UserDataSync] Hydration complete, authReady = true (socket-only)');
+      console.log('✅ [UserDataSync] Hydration complete, authReady = true (socket-only, TERMINAL)');
 
       // Notify subscribers that auth is ready
       this.notifySubscribers('authReady', true);

@@ -19,7 +19,7 @@ interface LotteryRound {
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useUserData();
+  const { user, refreshUser, isAuthReady } = useUserData();
   const { t } = useTranslation();
   const [round, setRound] = useState<LotteryRound | null>(null);
 
@@ -37,7 +37,9 @@ export default function Home() {
     }
   };
 
-  if (!user) {
+  // Loading depends on authReady ONLY, not on user balance
+  // User might have balance = 0, which is valid
+  if (!isAuthReady) {
     return <div className="loading">{t('common.loading')}</div>;
   }
 
@@ -46,7 +48,7 @@ export default function Home() {
       <div className="container">
         <h1 className="title">{t('home.title')}</h1>
 
-        <Wallet kyatBalance={user.kyatBalance} points={user.points} />
+        {user && <Wallet kyatBalance={user.kyatBalance} points={user.points} />}
 
         <AdminPanel />
 
