@@ -48,6 +48,22 @@ export const useLotteryData = () => {
   useEffect(() => {
     // NO INITIAL HTTP FETCH - wait for socket events or UserDataSync
     
+    // Sync initial state immediately from UserDataSync
+    const initialRound = userDataSync.getData('activeRound');
+    const initialBets = userDataSync.getData('bets') || [];
+    console.log('[useLotteryData] Initial sync:', { hasRound: !!initialRound, betsCount: initialBets.length });
+    if (initialRound) {
+      setActiveRound(initialRound);
+      activeRoundRef.current = initialRound;
+      hasLoadedRoundRef.current = true;
+    }
+    if (initialBets.length > 0) {
+      userBetsRef.current = initialBets;
+      if (initialRound) {
+        updateUserStakeFromBets(initialRound.id);
+      }
+    }
+    
     // Connect to WebSocket for real-time updates
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (token) {
