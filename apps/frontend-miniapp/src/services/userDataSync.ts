@@ -572,8 +572,15 @@ class UserDataSyncController {
    */
   async syncBets(limit: number = 100): Promise<Bet[] | null> {
     // RULE: Only fetch if bets === null (initial load only)
+    // 🔍 DEBUG: Log REST sync attempts to catch overwrites
+    console.log(`[BETS UPDATE] 🔍 syncBets REST called:`, {
+      currentBetsState: this.state.bets === null ? 'null' : `array(${this.state.bets.length})`,
+      socketConnected: this.socketConnected,
+      willFetch: this.state.bets === null,
+    });
+    
     if (this.state.bets !== null) {
-      console.log(`[BETS UPDATE] syncBets REST -> SKIPPED (bets already loaded, socket is source of truth)`);
+      console.log(`[BETS UPDATE] ⚠️ syncBets REST -> SKIPPED (bets already loaded from socket, preventing overwrite)`);
       return null;
     }
 
