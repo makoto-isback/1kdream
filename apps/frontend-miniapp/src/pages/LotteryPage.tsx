@@ -44,7 +44,7 @@ const STATIC_BLOCKS: NumberStats[] = Array.from({ length: 25 }, (_, i) => ({
 
 const LotteryPage: React.FC = () => {
   const { user, refreshUser, isAuthReady } = useUserData();
-  const { activeRound, blockStats, userStake, loading: dataLoading, error: dataError, refetch } = useLotteryData();
+  const { activeRound, blockStats, userStake, error: dataError, refetch } = useLotteryData();
   const [language, setLanguage] = useState<Language>('en');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   
@@ -469,7 +469,6 @@ const LotteryPage: React.FC = () => {
                          round={activeRound}
                          countdown={countdown}
                          userStake={userStake}
-                         loading={dataLoading}
                        />
                        
                        {/* User's bets for this round */}

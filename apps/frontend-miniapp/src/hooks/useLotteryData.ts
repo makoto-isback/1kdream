@@ -23,7 +23,6 @@ export const useLotteryData = () => {
   const [activeRound, setActiveRound] = useState<LotteryRound | null>(null);
   const [blockStats, setBlockStats] = useState<Map<number, BlockStats>>(new Map());
   const [userStake, setUserStake] = useState<number>(0);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { isAuthReady, user } = useUserData();
   
@@ -188,7 +187,6 @@ export const useLotteryData = () => {
     }
 
     console.log('[useLotteryData] Manual refetch (socket disconnected, fallback mode)');
-    setLoading(true);
     try {
       // Use UserDataSync for fallback HTTP
       const round = await userDataSync.syncActiveRound();
@@ -202,8 +200,6 @@ export const useLotteryData = () => {
       if (!hasLoadedRoundRef.current) {
         setError(err.response?.data?.message || 'Failed to load lottery data');
       }
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -211,7 +207,6 @@ export const useLotteryData = () => {
     activeRound,
     blockStats,
     userStake,
-    loading,
     error,
     refetch,
   };

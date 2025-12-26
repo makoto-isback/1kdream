@@ -10,15 +10,18 @@ interface Props {
   round: LotteryRound | null;
   countdown: string;
   userStake: number;
-  loading?: boolean;
 }
 
-export const RoundPanel: React.FC<Props> = ({ language, round, countdown, userStake, loading = false }) => {
-  if (loading || !round) {
+export const RoundPanel: React.FC<Props> = ({ language, round, countdown, userStake }) => {
+  // Socket-first: Render immediately, even if round is null
+  // Round will be populated via socket events progressively
+  if (!round) {
     return (
       <GlassCard className="w-full mb-4">
         <div className="flex justify-center items-center py-8">
-          <span className="text-ios-label-secondary text-sm">{TRANSLATIONS.loading[language]}</span>
+          <span className="text-ios-label-secondary text-sm">
+            {language === 'en' ? 'Waiting for round data...' : 'ပွဲအချက်အလက် စောင့်နေသည်...'}
+          </span>
         </div>
       </GlassCard>
     );
