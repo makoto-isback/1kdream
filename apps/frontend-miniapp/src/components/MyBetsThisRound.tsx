@@ -34,28 +34,39 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
       });
       
       if (allBets && roundId) {
+        // Normalize roundId comparison - support both roundId and lotteryRoundId schemas
+        const normalizeRoundId = (bet: Bet): string => {
+          // Support both roundId and lotteryRoundId (inconsistent bet object shapes)
+          const betRoundId = (bet as any).roundId ?? bet.lotteryRoundId;
+          return String(betRoundId || '');
+        };
+        
         // 🔍 DEBUG: Log every bet's roundId before filtering
         console.log(`[MyBetsThisRound] 🔍 Filtering bets by roundId:`, {
           targetRoundId: roundId,
           targetRoundIdType: typeof roundId,
-          allBets: allBets.map(bet => ({
-            id: bet.id,
-            lotteryRoundId: bet.lotteryRoundId,
-            lotteryRoundIdType: typeof bet.lotteryRoundId,
-            blockNumber: bet.blockNumber,
-            matches: bet.lotteryRoundId === roundId,
-            strictEqual: bet.lotteryRoundId === roundId,
-            looseEqual: bet.lotteryRoundId == roundId,
-          })),
+          allBets: allBets.map(bet => {
+            const betRoundId = normalizeRoundId(bet);
+            return {
+              id: bet.id,
+              roundId: betRoundId,
+              lotteryRoundId: bet.lotteryRoundId,
+              hasRoundId: !!(bet as any).roundId,
+              hasLotteryRoundId: !!bet.lotteryRoundId,
+              blockNumber: bet.blockNumber,
+              matches: betRoundId === String(roundId),
+            };
+          }),
         });
         
         const roundBets = allBets.filter(bet => {
-          const matches = bet.lotteryRoundId === roundId;
-          if (!matches && bet.lotteryRoundId && roundId) {
+          const betRoundId = normalizeRoundId(bet);
+          const matches = betRoundId === String(roundId);
+          if (!matches && betRoundId && roundId) {
             console.log(`[MyBetsThisRound] ⚠️ Bet ${bet.id} roundId mismatch:`, {
-              betRoundId: bet.lotteryRoundId,
+              betRoundId,
               targetRoundId: roundId,
-              types: { bet: typeof bet.lotteryRoundId, target: typeof roundId },
+              types: { bet: typeof betRoundId, target: typeof roundId },
             });
           }
           return matches;
@@ -79,7 +90,15 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
     // Get initial bets from cache
     const cachedBets = userDataSync.getData('bets') || [];
     if (cachedBets.length > 0 && roundId) {
-      const roundBets = cachedBets.filter((bet: Bet) => bet.lotteryRoundId === roundId);
+      // Normalize roundId comparison - support both roundId and lotteryRoundId schemas
+      const normalizeRoundId = (bet: Bet): string => {
+        const betRoundId = (bet as any).roundId ?? bet.lotteryRoundId;
+        return String(betRoundId || '');
+      };
+      const roundBets = cachedBets.filter((bet: Bet) => {
+        const betRoundId = normalizeRoundId(bet);
+        return betRoundId === String(roundId);
+      });
       setBets(roundBets);
     } else {
       setBets([]);
