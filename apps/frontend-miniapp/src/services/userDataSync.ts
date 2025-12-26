@@ -104,18 +104,23 @@ class UserDataSyncController {
     // RULE: Replace bets ONLY if incoming.length >= current.length
     // This prevents REST responses from overwriting socket-updated state
     socketService.onUserBetsUpdated((data: { bets: any[] }) => {
-      console.log('📡 [UserDataSync] Received user:bets:updated socket event', data);
+      console.log('📡 [UserDataSync] 🔔 SOCKET EVENT: user:bets:updated', { betCount: data.bets?.length || 0 });
       if (data.bets) {
         const currentBets = this.state.bets || [];
         const incomingBets = data.bets;
         
+        console.log(`[BETS UPDATE] user:bets:updated socket -> incoming: ${incomingBets.length}, current: ${currentBets.length}`);
+        
         // Only replace if incoming has more or equal bets (prevents REST overwrites)
         if (incomingBets.length >= currentBets.length) {
-          console.log(`[BETS UPDATE] user:bets:updated socket -> ${incomingBets.length} bets (replacing ${currentBets.length})`);
+          console.log(`[BETS UPDATE] ✅ user:bets:updated socket -> ${incomingBets.length} bets (replacing ${currentBets.length})`);
           this.updateBetsFromSocket(incomingBets);
+          console.log(`[BETS UPDATE] ✅ State updated, subscribers notified`);
         } else {
-          console.log(`[BETS UPDATE] user:bets:updated socket -> ${incomingBets.length} bets (IGNORED, current has ${currentBets.length})`);
+          console.log(`[BETS UPDATE] ⚠️ user:bets:updated socket -> ${incomingBets.length} bets (IGNORED, current has ${currentBets.length})`);
         }
+      } else {
+        console.log(`[BETS UPDATE] ⚠️ user:bets:updated socket -> no bets in payload`);
       }
     });
 
@@ -129,13 +134,20 @@ class UserDataSyncController {
       userId: string;
       createdAt: string;
     }) => {
-      console.log('📡 [UserDataSync] Received bet:placed socket event', data);
+      console.log('📡 [UserDataSync] 🔔 SOCKET EVENT: bet:placed', { 
+        userId: data.userId, 
+        roundId: data.roundId, 
+        blockNumber: data.blockNumber, 
+        amount: data.amount 
+      });
       
       // Update user bets array if this bet is for the current user
       // Note: bet:placed is broadcast, so we check if it matches current user
       // We'll add the bet optimistically, and user:bets:updated will sync the full list
       const currentUser = this.state.user;
       if (currentUser && currentUser.id && currentUser.id === data.userId) {
+        console.log(`[BETS UPDATE] bet:placed socket -> Matches current user ${currentUser.id}, appending bet`);
+        
         // Create a temporary bet object from the event data
         // The full bet object will arrive via user:bets:updated, but we update optimistically
         const newBet: Bet = {
@@ -161,34 +173,55 @@ class UserDataSyncController {
         if (!betExists) {
           // Append new bet to existing bets array (never clear or replace)
           const updatedBets = [...existingBets, newBet];
-          console.log(`[BETS UPDATE] bet:placed socket -> ${updatedBets.length} bets (appended, was ${existingBets.length})`);
+          console.log(`[BETS UPDATE] ✅ bet:placed socket -> ${updatedBets.length} bets (appended, was ${existingBets.length})`);
           this.updateState('bets', updatedBets);
+          console.log(`[BETS UPDATE] ✅ State updated, subscribers notified`);
         } else {
-          console.log(`[BETS UPDATE] bet:placed socket -> duplicate bet ignored`);
+          console.log(`[BETS UPDATE] ⚠️ bet:placed socket -> duplicate bet ignored (already exists)`);
         }
+      } else {
+        console.log(`[BETS UPDATE] ⚠️ bet:placed socket -> Not for current user (event userId: ${data.userId}, current: ${currentUser?.id || 'none'})`);
       }
     });
 
     // Listen for round:stats:updated events - update block stats
     // PERSISTENT: Never unsubscribe - lives for app lifetime
     // CONTRACT: { roundId, stats: { [blockNumber]: { buyers, totalAmount } } }
+    // MERGE: Incrementally merge stats instead of replacing (supports partial updates)
     socketService.onRoundStatsUpdated((data: {
       roundId: string;
       stats: Record<number, { buyers: number; totalAmount: number }>;
     }) => {
-      console.log('📡 [UserDataSync] Received round:stats:updated socket event', data);
+      console.log('📡 [UserDataSync] 🔔 SOCKET EVENT: round:stats:updated', { 
+        roundId: data.roundId, 
+        blockCount: Object.keys(data.stats || {}).length 
+      });
       
       // ALWAYS update round stats - do NOT gate on activeRound
       // Stats can arrive before activeRound is set
-      console.log('📡 [UserDataSync] Updating roundStats from round:stats:updated event');
-      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
+      // MERGE: Get existing stats and merge with incoming (incremental updates)
+      const existingRoundStats = this.state.roundStats;
+      const existingStats = existingRoundStats?.stats || {};
+      
+      // Merge incoming stats with existing (incoming takes precedence for updated blocks)
+      const mergedStats: Record<number, { buyers: number; totalKyat: number }> = { ...existingStats };
       Object.entries(data.stats || {}).forEach(([blockNum, stat]) => {
-        statsMap.set(parseInt(blockNum), {
+        mergedStats[parseInt(blockNum)] = {
           buyers: stat.buyers || 0,
           totalKyat: stat.totalAmount || 0,
-        });
+        };
       });
+      
+      console.log(`[ROUND STATS] ✅ Merging stats: ${Object.keys(mergedStats).length} blocks (incoming: ${Object.keys(data.stats || {}).length}, existing: ${Object.keys(existingStats).length})`);
+      
+      // Convert merged stats to Map for storage
+      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
+      Object.entries(mergedStats).forEach(([blockNum, stat]) => {
+        statsMap.set(parseInt(blockNum), stat);
+      });
+      
       this.updateRoundStatsFromSocket(data.roundId, statsMap);
+      console.log(`[ROUND STATS] ✅ State updated, subscribers notified`);
     });
 
     // Listen for round:active:updated events - update active round
@@ -205,7 +238,13 @@ class UserDataSyncController {
       winningBlock: number | null;
       drawnAt: string | null;
     }) => {
-      console.log('📡 [UserDataSync] Received round:active:updated socket event', data);
+      console.log('📡 [UserDataSync] 🔔 SOCKET EVENT: round:active:updated', { 
+        roundId: data.id, 
+        roundNumber: data.roundNumber,
+        totalPool: data.totalPool,
+        winnerPool: data.winnerPool,
+        status: data.status
+      });
       
       const newRound: LotteryRound = {
         id: data.id,
@@ -220,7 +259,9 @@ class UserDataSyncController {
         drawnAt: data.drawnAt || null, // Already a string from socket
       };
       
+      console.log(`[ROUND UPDATE] ✅ Updating activeRound: round #${newRound.roundNumber}, pool: ${newRound.totalPool}`);
       this.updateActiveRoundFromSocket(newRound);
+      console.log(`[ROUND UPDATE] ✅ State updated, subscribers notified`);
     });
   }
 

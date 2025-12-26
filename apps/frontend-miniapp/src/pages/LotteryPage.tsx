@@ -556,9 +556,8 @@ const LotteryPage: React.FC = () => {
             setShowWinningPopup(false);
             // Don't reset winningBlockOverride or winnersCount - keep them for potential re-display
             // Don't remove from shownRoundsRef - we've already shown it, don't show again
-            // Refresh data after popup closes
-            refetch();
-            refreshUser();
+            // SOCKET-FIRST: No REST refetch - socket events will update UI
+            // Only trigger refresh keys for UI components that need manual refresh
             setWinnersRefreshKey(prev => prev + 1);
             setHistoryRefreshKey(prev => prev + 1);
           }}
