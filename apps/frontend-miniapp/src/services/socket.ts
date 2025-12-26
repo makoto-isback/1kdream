@@ -147,6 +147,11 @@ class SocketService {
       forceNew: false, // Reuse existing connection if available
     });
 
+    // DEBUG: Log ALL socket events
+    this.socket.onAny((event, ...args) => {
+      console.log(`[SOCKET EVENT] ${event}`, args);
+    });
+
     this.socket.on('connect', () => {
       console.log('🔌 [Socket] ✅ CONNECTED - Socket ID:', this.socket?.id);
       console.log('🔌 [Socket] Connection URL:', `${backendUrl}/events`);

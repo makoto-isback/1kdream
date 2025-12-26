@@ -98,6 +98,14 @@ class UserDataSyncController {
       console.log('📡 [UserDataSync] Received user:balance:updated socket event', data);
       this.updateUserBalanceFromSocket(data.kyatBalance, data.points);
     });
+
+    // Listen for user bets updates from socket
+    socketService.on('user:bets:updated', (data: { bets: any[] }) => {
+      console.log('📡 [UserDataSync] Received user:bets:updated socket event', data);
+      if (data.bets) {
+        this.updateBetsFromSocket(data.bets);
+      }
+    });
   }
 
   /**

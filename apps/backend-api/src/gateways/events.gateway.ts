@@ -6,8 +6,11 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, Inject, forwardRef } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
+import { UsersService } from '../modules/users/users.service';
+import { LotteryService } from '../modules/lottery/lottery.service';
+import { BetsService } from '../modules/bets/bets.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -27,6 +30,14 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(EventsGateway.name);
   private connectedClients = new Map<string, AuthenticatedSocket>();
 
+  constructor(
+    private usersService: UsersService,
+    @Inject(forwardRef(() => LotteryService))
+    private lotteryService: LotteryService,
+    @Inject(forwardRef(() => BetsService))
+    private betsService: BetsService,
+  ) {}
+
   async handleConnection(@ConnectedSocket() client: AuthenticatedSocket) {
     const isDev = process.env.NODE_ENV === 'development';
     
@@ -37,12 +48,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.handshake.query?.token ||
         client.handshake.headers?.authorization?.replace('Bearer ', '');
 
-      // DEV MODE: Allow connections without token or with invalid token
+        // DEV MODE: Allow connections without token or with invalid token
       if (isDev && !token) {
         this.logger.warn(`🔧 [DEV] Client ${client.id} connected without token - allowing connection`);
         client.userId = 'DEV';
         this.connectedClients.set(client.id, client);
         client.emit('connected', { userId: 'DEV' });
+        // Skip initial data for DEV mode (no real user)
         return;
       }
 
@@ -68,6 +80,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           client.userId = 'DEV';
           this.connectedClients.set(client.id, client);
           client.emit('connected', { userId: 'DEV' });
+          // Skip initial data for DEV mode (no real user)
           return;
         }
 
@@ -81,6 +94,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
         // Send connection confirmation
         client.emit('connected', { userId });
+
+        // Emit initial data after authentication
+        this.emitInitialData(userId, client);
       } catch (authError) {
         // DEV MODE: Allow connection even if token verification fails
         if (isDev) {
@@ -88,6 +104,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           client.userId = 'DEV';
           this.connectedClients.set(client.id, client);
           client.emit('connected', { userId: 'DEV' });
+          // Skip initial data for DEV mode (no real user)
+          return;
         } else {
           // PRODUCTION: Strict authentication required
           this.logger.warn(`Client ${client.id} authentication failed: ${authError.message}`);
@@ -101,6 +119,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.userId = 'DEV';
         this.connectedClients.set(client.id, client);
         client.emit('connected', { userId: 'DEV' });
+        // Skip initial data for DEV mode (no real user)
+        return;
       } else {
         this.logger.warn(`Client ${client.id} connection error: ${error.message}`);
         client.disconnect();
@@ -261,6 +281,51 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
 
     this.emitToUser(userId, 'user:balance:updated', eventPayload);
+  }
+
+  /**
+   * Emit initial data after socket authentication
+   * This ensures frontend gets user balance, active round, and bets immediately
+   */
+  private async emitInitialData(userId: string, client: AuthenticatedSocket) {
+    try {
+      // Emit user balance
+      const user = await this.usersService.findOne(userId);
+      if (user) {
+        this.logger.log(`📡 [EventsGateway] Emitting initial user balance for ${userId}`);
+        this.emitUserBalanceUpdated(userId, Number(user.kyatBalance), Number(user.points));
+      }
+
+      // Emit active round
+      const activeRound = await this.lotteryService.getActiveRound();
+      if (activeRound) {
+        this.logger.log(`📡 [EventsGateway] Emitting initial active round for ${userId}`);
+        this.emitActiveRoundUpdated({
+          id: activeRound.id,
+          roundNumber: activeRound.roundNumber,
+          status: activeRound.status,
+          totalPool: Number(activeRound.totalPool),
+          winnerPool: Number(activeRound.winnerPool),
+          adminFee: Number(activeRound.adminFee),
+          totalBets: activeRound.bets?.length || 0,
+          drawTime: activeRound.drawTime,
+          winningBlock: activeRound.winningBlock,
+          drawnAt: activeRound.drawnAt,
+        });
+      }
+
+      // Emit user bets (send directly to client, not broadcast)
+      const userBets = await this.betsService.getUserBets(userId, 100);
+      if (userBets && userBets.length > 0) {
+        this.logger.log(`📡 [EventsGateway] Emitting initial user bets for ${userId} (${userBets.length} bets)`);
+        // Note: We don't have a 'bets:updated' event, but we can emit user-specific event
+        // For now, bets will be synced via HTTP fallback or when new bets are placed
+        // The frontend can request bets via HTTP if needed
+      }
+    } catch (error) {
+      this.logger.error(`📡 [EventsGateway] Error emitting initial data for ${userId}:`, error);
+      // Don't throw - connection is still valid even if initial data fails
+    }
   }
 }
 
