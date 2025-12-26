@@ -37,7 +37,7 @@ type DataUpdateCallback = (data: any) => void;
 class UserDataSyncController {
   private state: UserDataState = {
     user: null,
-    bets: [],
+    bets: null, // null = never loaded, [] = empty (socket source of truth)
     autobetPlans: [],
     activeRound: null,
     roundStats: null,
@@ -101,10 +101,21 @@ class UserDataSyncController {
     });
 
     // Listen for user bets updates from socket
+    // RULE: Replace bets ONLY if incoming.length >= current.length
+    // This prevents REST responses from overwriting socket-updated state
     socketService.onUserBetsUpdated((data: { bets: any[] }) => {
       console.log('📡 [UserDataSync] Received user:bets:updated socket event', data);
       if (data.bets) {
-        this.updateBetsFromSocket(data.bets);
+        const currentBets = this.state.bets || [];
+        const incomingBets = data.bets;
+        
+        // Only replace if incoming has more or equal bets (prevents REST overwrites)
+        if (incomingBets.length >= currentBets.length) {
+          console.log(`[BETS UPDATE] user:bets:updated socket -> ${incomingBets.length} bets (replacing ${currentBets.length})`);
+          this.updateBetsFromSocket(incomingBets);
+        } else {
+          console.log(`[BETS UPDATE] user:bets:updated socket -> ${incomingBets.length} bets (IGNORED, current has ${currentBets.length})`);
+        }
       }
     });
 
@@ -172,10 +183,12 @@ class UserDataSyncController {
         );
 
         if (!betExists) {
-          console.log('📡 [UserDataSync] Added bet to user bets from socket', { roundId: data.roundId, blockNumber: data.blockNumber, amount: data.amount });
-          // Append new bet to existing bets array
+          // Append new bet to existing bets array (never clear or replace)
           const updatedBets = [...existingBets, newBet];
+          console.log(`[BETS UPDATE] bet:placed socket -> ${updatedBets.length} bets (appended, was ${existingBets.length})`);
           this.updateState('bets', updatedBets);
+        } else {
+          console.log(`[BETS UPDATE] bet:placed socket -> duplicate bet ignored`);
         }
       }
     });
@@ -494,13 +507,31 @@ class UserDataSyncController {
 
   /**
    * Sync user bets (HTTP fallback only)
+   * RULE: REST = INITIAL LOAD ONLY
+   * - Only populate bets IF current bets === null (never loaded)
+   * - NEVER replace bets after sockets are active
+   * - If REST returns empty but bets already exist, IGNORE it
    */
   async syncBets(limit: number = 100): Promise<Bet[] | null> {
-    return this.makeHttpRequest(
+    // RULE: Only fetch if bets === null (initial load only)
+    if (this.state.bets !== null) {
+      console.log(`[BETS UPDATE] syncBets REST -> SKIPPED (bets already loaded, socket is source of truth)`);
+      return null;
+    }
+
+    const result = await this.makeHttpRequest(
       `/bets/my?limit=${limit}`,
       () => betsService.getUserBets(limit),
       'bets'
     );
+
+    if (result) {
+      console.log(`[BETS UPDATE] syncBets REST -> ${result.length} bets (initial load)`);
+    } else {
+      console.log(`[BETS UPDATE] syncBets REST -> null (HTTP blocked or failed)`);
+    }
+
+    return result;
   }
 
   /**
@@ -562,9 +593,11 @@ class UserDataSyncController {
 
   /**
    * Update bets from socket event
+   * RULE: Socket events MUST mutate state
+   * This is called by user:bets:updated handler (with length check)
    */
   updateBetsFromSocket(bets: Bet[]): void {
-    console.log('📡 [UserDataSync] Updating bets from socket (socket-first)');
+    console.log(`[BETS UPDATE] updateBetsFromSocket socket -> ${bets.length} bets`);
     this.updateState('bets', bets);
   }
 
@@ -624,8 +657,17 @@ class UserDataSyncController {
           if (user) this.updateState('user', user);
           break;
         case 'bets':
-          const bets = await this.syncBets();
-          if (bets) this.updateState('bets', bets);
+          // RULE: Manual refresh follows same rules as syncBets
+          // Only populate if bets === null (initial load only)
+          if (this.state.bets === null) {
+            const bets = await this.syncBets();
+            if (bets) {
+              console.log(`[BETS UPDATE] manualRefresh REST -> ${bets.length} bets (initial load)`);
+              this.updateState('bets', bets);
+            }
+          } else {
+            console.log(`[BETS UPDATE] manualRefresh REST -> SKIPPED (bets already loaded, socket is source of truth)`);
+          }
           break;
         case 'autobetPlans':
           const plans = await this.syncAutobetPlans();
