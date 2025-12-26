@@ -121,7 +121,19 @@ class UserDataSyncController {
     }) => {
       console.log('📡 [UserDataSync] Received bet:placed socket event', data);
       
-      // Update active round pool if it's the current round
+      // ALWAYS update round stats - do NOT gate on activeRound
+      // Stats can arrive before activeRound is set
+      console.log('📡 [UserDataSync] Updating roundStats from bet:placed event');
+      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
+      data.blockStats.forEach((stat) => {
+        statsMap.set(stat.blockNumber, {
+          buyers: stat.totalBets || 0,
+          totalKyat: stat.totalAmount || 0,
+        });
+      });
+      this.updateRoundStatsFromSocket(data.roundId, statsMap);
+      
+      // Update active round pool if it's the current round (passive reconciliation)
       const currentRound = this.state.activeRound;
       if (currentRound?.id === data.roundId) {
         const updatedRound = {
@@ -132,16 +144,6 @@ class UserDataSyncController {
         };
         this.updateState('activeRound', updatedRound);
       }
-
-      // Update round stats from blockStats
-      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
-      data.blockStats.forEach((stat) => {
-        statsMap.set(stat.blockNumber, {
-          buyers: stat.totalBets || 0,
-          totalKyat: stat.totalAmount || 0,
-        });
-      });
-      this.updateRoundStatsFromSocket(data.roundId, statsMap);
     });
 
     // Listen for round:stats:updated events - update block stats
@@ -152,7 +154,9 @@ class UserDataSyncController {
     }) => {
       console.log('📡 [UserDataSync] Received round:stats:updated socket event', data);
       
-      // Update round stats from blockStats
+      // ALWAYS update round stats - do NOT gate on activeRound
+      // Stats can arrive before activeRound is set
+      console.log('📡 [UserDataSync] Updating roundStats from round:stats:updated event');
       const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
       data.blockStats.forEach((stat) => {
         statsMap.set(stat.blockNumber, {
@@ -549,15 +553,24 @@ class UserDataSyncController {
   /**
    * Update round stats from socket event
    * stats is a Map<number, { buyers: number; totalKyat: number }>
+   * ALWAYS updates - never gated on activeRound
    */
   updateRoundStatsFromSocket(roundId: string, stats: Map<number, { buyers: number; totalKyat: number }>): void {
-    console.log(`📡 [UserDataSync] Updating round stats from socket (socket-first) for round ${roundId}`);
+    console.log(`📡 [UserDataSync] Updating roundStats for round ${roundId}`, { statsCount: stats.size });
+    
     // Convert Map to object for storage, but keep roundId for reference
     const statsObj: Record<number, { buyers: number; totalKyat: number }> = {};
     stats.forEach((value, key) => {
       statsObj[key] = value;
     });
-    this.updateState('roundStats', { roundId, stats: statsObj });
+    
+    const roundStatsData = { roundId, stats: statsObj };
+    console.log(`📡 [UserDataSync] Storing roundStats:`, { roundId, blockCount: Object.keys(statsObj).length });
+    
+    // ALWAYS update state and notify subscribers - never gate on activeRound
+    this.updateState('roundStats', roundStatsData);
+    
+    console.log(`📡 [UserDataSync] ✅ roundStats updated and subscribers notified`);
   }
 
   /**

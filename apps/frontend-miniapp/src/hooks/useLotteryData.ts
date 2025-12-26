@@ -96,8 +96,9 @@ export const useLotteryData = () => {
       // Subscribe to UserDataSync for round stats
       // Round stats are updated by UserDataSync from socket events (bet:placed, round:stats:updated)
       // PERSISTENT: Socket subscriptions live in UserDataSync, never unsubscribe here
+      // ALWAYS update - roundStats can exist even if activeRound is null
       const unsubscribeRoundStats = userDataSync.subscribe('roundStats', (roundStatsData: { roundId: string; stats: Record<number, { buyers: number; totalKyat: number }> } | null) => {
-        console.log('[useLotteryData] Round stats subscription callback fired:', roundStatsData);
+        console.log('[useLotteryData] Round stats subscription callback fired:', roundStatsData ? `round ${roundStatsData.roundId}, ${Object.keys(roundStatsData.stats || {}).length} blocks` : 'null');
         if (roundStatsData && roundStatsData.stats) {
           // Convert object back to Map
           const statsMap = new Map<number, BlockStats>();
@@ -107,7 +108,10 @@ export const useLotteryData = () => {
               totalKyat: stat.totalKyat,
             });
           });
+          console.log('[useLotteryData] ✅ Updating blockStats Map:', { blockCount: statsMap.size });
           setBlockStats(statsMap);
+        } else {
+          console.log('[useLotteryData] ⚠️ roundStats is null or missing stats');
         }
       });
 
