@@ -61,6 +61,8 @@ class UserDataSyncController {
     this.setupSocketMonitoring();
     // Listen for socket authentication event
     this.setupSocketAuthListener();
+    // Setup socket event listeners for user data updates
+    this.setupSocketEventListeners();
   }
 
   /**
@@ -79,11 +81,23 @@ class UserDataSyncController {
    */
   private setupSocketAuthListener(): void {
     if (typeof window !== 'undefined') {
-      window.addEventListener('socket:authenticated', () => {
-        console.log('📡 [UserDataSync] Received socket:authenticated event');
-        this.hydrateAfterSocketAuth();
+      window.addEventListener('socket:authenticated', (event: any) => {
+        const { userId } = event.detail || {};
+        console.log('📡 [UserDataSync] Received socket:authenticated event, userId:', userId);
+        this.hydrateAfterSocketAuth(userId);
       });
     }
+  }
+
+  /**
+   * Setup socket event listeners for user data updates
+   */
+  private setupSocketEventListeners(): void {
+    // Listen for user balance updates from socket
+    socketService.onUserBalanceUpdated((data: { kyatBalance: number; points: number }) => {
+      console.log('📡 [UserDataSync] Received user:balance:updated socket event', data);
+      this.updateUserBalanceFromSocket(data.kyatBalance, data.points);
+    });
   }
 
   /**
@@ -252,9 +266,10 @@ class UserDataSyncController {
 
   /**
    * Hydrate user data ONCE after socket authentication succeeds
-   * This is the ONLY controlled HTTP fetch allowed after socket auth
+   * Socket-only: NO HTTP calls to /users/me
+   * User data comes from socket auth payload and socket events
    */
-  async hydrateAfterSocketAuth(): Promise<void> {
+  async hydrateAfterSocketAuth(userId: string): Promise<void> {
     // Check if already hydrated
     if (this.hydratedOnce) {
       console.log('[UserDataSync] Already hydrated, skipping');
@@ -267,45 +282,55 @@ class UserDataSyncController {
       return;
     }
 
-    // Set hydrating flag
-    this.isHydratingFlag = true;
-    console.log('📡 [UserDataSync] Hydrating after socket auth');
+    if (!userId) {
+      console.warn('[UserDataSync] No userId provided, cannot hydrate');
+      return;
+    }
+
+    console.log('📡 [UserDataSync] Hydrating after socket auth (socket-only, no HTTP)');
 
     try {
-      // Allow ONE controlled HTTP fetch for user data
-      const userData = await usersService.getMe();
-      this.updateState('user', userData);
-      console.log('✅ [UserDataSync] User data hydrated');
+      // Create minimal user object from socket auth payload
+      // Balance will be populated via socket events (user:balance:updated)
+      const initialUser: User = {
+        id: userId,
+        telegramId: '', // Will be populated by socket events if needed
+        username: null,
+        firstName: null,
+        lastName: null,
+        kyatBalance: 0, // Will be updated via user:balance:updated socket event
+        points: 0, // Will be updated via user:balance:updated socket event
+        tonAddress: null,
+        isAdmin: false, // Will be updated via socket events if needed
+        isActivated: false,
+        activatedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-      // Allow ONE controlled HTTP fetch for bets
-      const betsData = await betsService.getUserBets(100);
-      this.updateState('bets', betsData);
-      console.log('✅ [UserDataSync] Bets data hydrated');
+      this.updateState('user', initialUser);
+      console.log('✅ [UserDataSync] Initial user state seeded from socket auth (userId:', userId, ')');
 
       // Mark as hydrated
       this.hydratedOnce = true;
       this.authReady = true;
-      console.log('✅ [UserDataSync] Hydration complete, authReady = true');
+      console.log('✅ [UserDataSync] Hydration complete, authReady = true (socket-only)');
 
       // Notify subscribers that auth is ready
       this.notifySubscribers('authReady', true);
     } catch (error: any) {
       console.error('[UserDataSync] Hydration failed:', error);
       // Don't mark as hydrated on error - allow retry on next socket auth
-    } finally {
-      this.isHydratingFlag = false;
     }
   }
 
   /**
    * Sync user data (HTTP fallback only)
+   * NOTE: /users/me is permanently blocked - socket is the single source of truth
    */
   async syncUser(): Promise<User | null> {
-    return this.makeHttpRequest(
-      '/users/me',
-      () => usersService.getMe(),
-      'user'
-    );
+    console.warn('[UserDataSync] syncUser() called but /users/me is permanently blocked (socket-only auth)');
+    return null;
   }
 
   /**

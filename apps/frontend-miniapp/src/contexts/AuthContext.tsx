@@ -88,13 +88,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       if (token) {
         localStorage.setItem('token', token);
+        
+        // Socket-only auth: Don't set user from HTTP response
+        // User will be hydrated via socket authentication event
+        // If user data is in response, seed it to UserDataSync (optional optimization)
         const userData = response.data?.user;
         if (userData) {
-          console.log('[AUTH] User data from backend:', { id: userData.id, isAdmin: userData.isAdmin, username: userData.username });
-          setUser(userData);
+          console.log('[AUTH] User data from login response (seeding to UserDataSync):', { id: userData.id, isAdmin: userData.isAdmin, username: userData.username });
+          userDataSync.updateUserFromSocket(userData);
         }
+        
         setAuthError(null);
-        setIsAuthReady(true);
+        // Don't set isAuthReady here - wait for socket auth to complete
+        // UserDataSync will set authReady after socket authentication
         
         // Connect Socket.IO after successful login (singleton - only connects if not already connected)
         socketService.connect(token);
@@ -142,26 +148,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    try {
-      // Direct API call for initial auth only (bypasses UserDataSync socket check)
-      const userData = await usersService.getMe();
-      setUser(userData);
-      setAuthError(null);
-      setIsAuthReady(true);
-      // Update UserDataSync
-      userDataSync.updateUserFromSocket(userData);
-    } catch (error: any) {
-      console.error('[AUTH] Refresh user error:', error);
-      // Don't logout immediately - let the interceptor handle 401
-      // Only logout if it's not a 401 (might be network error)
-      if (error?.response?.status !== 401) {
-        logout();
-      } else {
-        // 401 - token invalid, but don't logout yet (will be handled by init)
-        setAuthError('Session expired');
-        setIsAuthReady(false);
-      }
-    }
+    // Socket-only auth: No HTTP call to /users/me
+    // User data will be hydrated via socket authentication event
+    // Just wait for socket auth to complete
+    console.log('[AUTH] Socket-only auth: Waiting for socket authentication...');
+    // UserDataSync will handle hydration after socket auth
+    // AuthContext will be updated via UserDataSync subscription
   };
 
   // Refresh user (uses UserDataSync - socket-first, HTTP fallback only)
