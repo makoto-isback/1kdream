@@ -478,23 +478,22 @@ const LotteryPage: React.FC = () => {
                          refreshKey={historyRefreshKey}
                        />
                        
-                       {user && (
-                         <AutoBuyPlans 
-                           language={language}
-                           userId={user.id}
-                           refreshKey={autoBuyRefreshKey}
-                           onPlanCancelled={async () => {
-                             await refreshUser();
-                             await refetch();
-                             setAutoBuyRefreshKey(prev => prev + 1);
-                           }}
-                         />
-                       )}
+                       {/* AutoBuyPlans renders always - only shows plans if they exist */}
+                       <AutoBuyPlans 
+                         language={language}
+                         userId={user?.id || ''}
+                         refreshKey={autoBuyRefreshKey}
+                         onPlanCancelled={async () => {
+                           await refreshUser();
+                           await refetch();
+                           setAutoBuyRefreshKey(prev => prev + 1);
+                         }}
+                       />
                        <PurchaseControl 
                          language={language} 
                          selectedCount={selectedIds.length} 
                          onBuy={handleBuy}
-                         disabled={buying || !user || !activeRound}
+                         disabled={buying || !isAuthReady}
                          loading={buying}
                          error={buyError}
                          disableAutoBuy={hasActiveAutoBuy}

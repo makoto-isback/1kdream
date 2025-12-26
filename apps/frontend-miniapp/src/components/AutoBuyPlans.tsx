@@ -8,12 +8,12 @@ import { userDataSync } from '../services/userDataSync';
 
 interface Props {
   language: Language;
-  userId: string;
+  userId: string; // Kept for API compatibility but not used (socket-first)
   refreshKey?: number; // Trigger manual refresh when this changes
   onPlanCancelled?: () => void;
 }
 
-export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, onPlanCancelled }) => {
+export const AutoBuyPlans: React.FC<Props> = ({ language, refreshKey, onPlanCancelled }) => {
   const [plans, setPlans] = useState<AutoBetPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -63,6 +63,8 @@ export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, on
     }
   };
 
+  // Render always - empty state is valid (no plans is fine)
+  // Only show loading if explicitly loading
   if (loading) {
     return (
       <GlassCard className="w-full mb-4">
@@ -73,8 +75,10 @@ export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, on
     );
   }
 
+  // Empty state is valid - don't block render
+  // Component can return null if no plans (this is fine for conditional display)
   if (plans.length === 0) {
-    return null; // Don't show anything if no active plans
+    return null; // Don't show anything if no active plans (this is fine - conditional component)
   }
 
   return (

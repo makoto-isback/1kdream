@@ -12,13 +12,14 @@ interface Props {
 }
 
 export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey }) => {
-  const { user, isAuthReady } = useUserData();
+  const { isAuthReady } = useUserData();
   const [bets, setBets] = useState<Bet[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Subscribe to UserDataSync for bets (socket-first, no HTTP)
+  // Render always - only gate by authReady
   useEffect(() => {
-    if (!roundId || !isAuthReady || !user) {
+    if (!isAuthReady) {
       setBets([]);
       return;
     }
@@ -29,6 +30,9 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
         const roundBets = allBets.filter(bet => bet.lotteryRoundId === roundId);
         setBets(roundBets);
         setLoading(false);
+      } else {
+        setBets([]);
+        setLoading(false);
       }
     });
 
@@ -37,10 +41,12 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
     if (cachedBets.length > 0 && roundId) {
       const roundBets = cachedBets.filter((bet: Bet) => bet.lotteryRoundId === roundId);
       setBets(roundBets);
+    } else {
+      setBets([]);
     }
 
     return unsubscribe;
-  }, [roundId, refreshKey, isAuthReady, user]);
+  }, [roundId, refreshKey, isAuthReady]);
 
   // Group bets by block number
   const groupedBets = bets.reduce((acc, bet) => {
@@ -55,8 +61,18 @@ export const MyBetsThisRound: React.FC<Props> = ({ language, roundId, refreshKey
   const totalBetsAmount = bets.reduce((sum, bet) => sum + Number(bet.amount), 0);
   const uniqueNumbers = Object.keys(groupedBets).length;
 
-  if (!user || !roundId) {
-    return null;
+  // Render always - only gate by authReady (handled by parent)
+  // If no roundId, show empty state
+  if (!roundId) {
+    return (
+      <GlassCard className="w-full mb-4">
+        <div className="py-3 text-center">
+          <p className="text-ios-label-secondary text-xs mb-2">
+            {language === 'en' ? 'Waiting for round data...' : 'ပွဲအချက်အလက် စောင့်နေသည်...'}
+          </p>
+        </div>
+      </GlassCard>
+    );
   }
 
   if (loading) {
