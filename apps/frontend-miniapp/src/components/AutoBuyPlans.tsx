@@ -4,36 +4,41 @@ import { Language } from '../types/ui';
 import { TRANSLATIONS } from '../constants/translations';
 import { Icons } from './Icons';
 import { autobetService, AutoBetPlan } from '../services/autobet';
+import { userDataSync } from '../services/userDataSync';
 
 interface Props {
   language: Language;
   userId: string;
-  refreshKey?: number; // Trigger refresh when this changes
+  refreshKey?: number; // Trigger manual refresh when this changes
   onPlanCancelled?: () => void;
 }
 
 export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, onPlanCancelled }) => {
   const [plans, setPlans] = useState<AutoBetPlan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
 
+  // Subscribe to UserDataSync for autobet plans (socket-first)
   useEffect(() => {
-    loadPlans();
-  }, [userId, refreshKey]); // Reload when userId or refreshKey changes
+    const unsubscribe = userDataSync.subscribe('autobetPlans', (userPlans: AutoBetPlan[]) => {
+      if (userPlans) {
+        // Show only active plans (cancellable)
+        const visiblePlans = userPlans.filter(p => p.status === 'active');
+        setPlans(visiblePlans);
+        setLoading(false);
+      }
+    });
 
-  const loadPlans = async () => {
-    try {
-      setLoading(true);
-      const userPlans = await autobetService.getUserPlans();
-      // Show only active plans (cancellable)
-      const visiblePlans = userPlans.filter(p => p.status === 'active');
-      setPlans(visiblePlans);
-    } catch (error) {
-      console.error('Error loading auto-buy plans:', error);
-    } finally {
-      setLoading(false);
+    return unsubscribe;
+  }, []);
+
+  // Manual refresh only (when refreshKey changes - user-initiated)
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      console.log('[AutoBuyPlans] Manual refresh triggered by refreshKey');
+      userDataSync.manualRefresh('autobetPlans');
     }
-  };
+  }, [refreshKey]);
 
   const handleCancel = async (planId: string) => {
     if (!confirm(language === 'en' 
@@ -46,7 +51,8 @@ export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, on
     try {
       setCancelling(planId);
       await autobetService.cancelPlan(planId);
-      await loadPlans();
+      // Manual refresh after cancel (user-initiated action)
+      await userDataSync.manualRefresh('autobetPlans');
       if (onPlanCancelled) {
         onPlanCancelled();
       }
@@ -61,7 +67,7 @@ export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, on
     return (
       <GlassCard className="w-full mb-4">
         <div className="flex justify-center items-center py-4">
-          <span className="text-ios-label-secondary text-sm">{TRANSLATIONS.loading[language]}</span>
+          <span className="text-ios-label-secondary text-sm">{String(TRANSLATIONS.loading[language])}</span>
         </div>
       </GlassCard>
     );
@@ -132,4 +138,3 @@ export const AutoBuyPlans: React.FC<Props> = ({ language, userId, refreshKey, on
     </GlassCard>
   );
 };
-

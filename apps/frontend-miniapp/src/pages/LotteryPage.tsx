@@ -18,12 +18,12 @@ import { validateBuy, validateAutoBuy } from '../utils/validation';
 import { AutoBuyPlans } from '../components/AutoBuyPlans';
 import { WinningHistoryBar, WinnerRound } from '../components/WinningHistoryBar';
 import { WinningPopup } from '../components/WinningPopup';
-import { LotteryRound, lotteryService, Winner } from '../services/lottery';
+import { LotteryRound } from '../services/lottery';
 import { UserRoundHistory } from '../components/UserRoundHistory';
 import { MyBetsThisRound } from '../components/MyBetsThisRound';
 import AdminPanel from '../components/AdminPanel';
 import { HowItWorksModal } from '../components/HowItWorksModal';
-import api from '../services/api';
+import { userDataSync } from '../services/userDataSync';
 import { socketService, RoundCompletedEvent, UserBalanceUpdatedEvent } from '../services/socket';
 
 /**
@@ -96,58 +96,19 @@ const LotteryPage: React.FC = () => {
     }
   }, [dataError, activeRound]);
 
-  // Load initial recent winners on mount (fallback if no socket events yet)
+  // NO AUTOMATIC FETCHES - Winners and autobet plans come from socket or manual refresh only
+  
+  // Subscribe to UserDataSync for autobet plans (socket-first)
   useEffect(() => {
-    const loadInitialWinners = async () => {
-      try {
-        const winners = await lotteryService.getWinnersFeed(20);
-        if (winners && winners.length > 0) {
-          // Aggregate by roundNumber
-          const map = new Map<number, WinnerRound>();
-          winners.forEach((w: Winner) => {
-            const existing = map.get(w.roundNumber);
-            if (existing) {
-              existing.winnersCount += 1;
-              if (!existing.winningBlock && w.block) existing.winningBlock = w.block;
-            } else {
-              map.set(w.roundNumber, {
-                roundNumber: w.roundNumber,
-                winningBlock: w.block,
-                winnersCount: 1,
-              });
-            }
-          });
-          const rounds = Array.from(map.values())
-            .sort((a, b) => b.roundNumber - a.roundNumber)
-            .slice(0, 10);
-          setRecentWinnersRounds(rounds);
-        }
-      } catch (error) {
-        console.error('Error loading initial winners:', error);
-      }
-    };
-    loadInitialWinners();
-  }, []); // Only run once on mount
-
-  // Load active auto-buy to restrict creating new ones
-  // CRITICAL: Only call when authenticated to prevent 401 loops
-  useEffect(() => {
-    if (!isAuthReady || !user) return;
-    
-    const loadAuto = async () => {
-      try {
-        const plans = await autobetService.getUserPlans();
-        const active = plans.some(p => p.status === 'active');
+    const unsubscribe = userDataSync.subscribe('autobetPlans', (plans: any[]) => {
+      if (plans) {
+        const active = plans.some((p: any) => p.status === 'active');
         setHasActiveAutoBuy(active);
-      } catch (error: any) {
-        // Don't retry on 401 - auth context will handle it
-        if (error?.response?.status !== 401) {
-          console.error('[LotteryPage] Error loading auto-buy plans:', error);
-        }
       }
-    };
-    loadAuto();
-  }, [autoBuyRefreshKey, isAuthReady, user]);
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Listen for round:completed events via Socket.IO
   // This effect runs ONCE on mount and tracks shown rounds independently
@@ -177,10 +138,11 @@ const LotteryPage: React.FC = () => {
       // Mark this round as shown IMMEDIATELY to prevent duplicate popups
       shownRoundsRef.current.add(event.roundId);
       
-      // Fetch winners count from stats API
-      api.get(`/lottery/round/${event.roundId}/stats`)
-        .then((stats) => {
-          const data = stats.data;
+      // Fetch winners count from stats (use UserDataSync - socket-first)
+      userDataSync.syncRoundStats(event.roundId)
+        .then((statsData) => {
+          if (!statsData) return;
+          const data = statsData;
           const winnersForBlock = data.blockStats?.[event.winningBlock - 1]?.totalBets ?? null;
           
           // Create round object from event data
@@ -225,7 +187,7 @@ const LotteryPage: React.FC = () => {
             console.log('🎰 [LotteryPage] ✅ Updated Recent Winners bar with round:', event.roundNumber);
           }
         })
-        .catch((err) => {
+        .catch((err: any) => {
           console.error('Error fetching round stats for popup:', err);
           // Still show popup with event data even if stats fetch fails
           const completedRoundData: LotteryRound = {
@@ -276,19 +238,13 @@ const LotteryPage: React.FC = () => {
   useEffect(() => {
     const unsubscribe = socketService.onUserBalanceUpdated((event: UserBalanceUpdatedEvent) => {
       console.log('[LotteryPage] Received user:balance:updated event', event);
-      // Optimistically update user balance from socket (instant, no HTTP)
-      // Note: refreshUser is debounced in AuthContext, so this won't spam
-      // But we prefer socket updates - only sync if needed
-      if (user) {
-        // Update user balance optimistically
-        // The socket event has the exact balance, but we need to update the context
-        // refreshUser is debounced, so this is safe
-        refreshUser();
-      }
+      // Update UserDataSync (which will update AuthContext via subscription)
+      // NO HTTP - socket is source of truth
+      userDataSync.updateUserBalanceFromSocket(event.kyatBalance, event.points);
     });
 
     return unsubscribe;
-  }, [refreshUser, user]);
+  }, []);
 
   const handleToggleNumber = (id: number) => {
     setSelectedIds(prev => 
@@ -304,12 +260,22 @@ const LotteryPage: React.FC = () => {
     setBuyError(null);
 
     try {
-      // Get current user buys in this round for validation
-      // This is guarded to prevent duplicate simultaneous validation calls
-      const userBets = await betsService.getUserBets(100);
-      const roundBets = userBets.filter(bet => bet.lotteryRoundId === activeRound.id);
+      // Get current user buys from UserDataSync (socket-first, no HTTP if socket connected)
+      // For validation, use cached data from UserDataSync state
+      let userBets = userDataSync.getData('bets') || [];
+      
+      // If no bets in cache and socket is disconnected, do a one-time sync for validation
+      if (userBets.length === 0 && !socketService.isConnected()) {
+        console.log('[LotteryPage] No bets in cache, syncing for validation (socket disconnected)');
+        const syncedBets = await userDataSync.syncBets(100);
+        if (syncedBets) {
+          userBets = syncedBets;
+        }
+      }
+      
+      const roundBets = userBets.filter((bet: any) => bet.lotteryRoundId === activeRound.id);
       const currentBuysCount = roundBets.length;
-      const currentTotalBuy = roundBets.reduce((sum, bet) => sum + Number(bet.amount), 0);
+      const currentTotalBuy = roundBets.reduce((sum: number, bet: any) => sum + Number(bet.amount), 0);
 
       if (mode === PurchaseMode.SINGLE) {
         // Validate single buy
@@ -362,24 +328,17 @@ const LotteryPage: React.FC = () => {
           totalRounds: rounds,
         });
         
-        // Trigger AutoBuyPlans refresh
+        // Manual refresh of autobet plans (user-initiated action)
+        await userDataSync.manualRefresh('autobetPlans');
         setAutoBuyRefreshKey(prev => prev + 1);
       }
 
-      // SOCKET-FIRST APPROACH: No immediate HTTP refetch
+      // SOCKET-FIRST APPROACH: No HTTP refetch
       // Socket events (bet:placed, user:balance:updated) will update UI instantly
       // Clear selection immediately for better UX
       setSelectedIds([]);
       
-      // Schedule ONE delayed sync fetch (3+ seconds) as safety net
-      // This is debounced in useLotteryData, so multiple bets won't cause spam
-      setTimeout(() => {
-        // This will be debounced by useLotteryData's debounced fetches
-        refetch().catch((err) => {
-          // Silent fail - socket already updated UI
-          console.warn('[LotteryPage] Delayed sync fetch failed (non-critical, socket already updated):', err);
-        });
-      }, 3500); // 3.5 seconds - after debounce window
+      // NO DELAYED SYNC - socket handles all updates when connected
       
     } catch (error: any) {
       // Only show error if bet placement actually failed

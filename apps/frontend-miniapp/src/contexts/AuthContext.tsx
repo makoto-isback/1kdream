@@ -1,11 +1,10 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import WebApp from '@twa-dev/sdk'; // Imported for SDK initialization side effects
 import api from '../services/api';
 import { usersService, User } from '../services/users';
 import { socketService } from '../services/socket';
-import { createDebouncedFetch } from '../utils/debounce';
-import { guardFetch } from '../utils/fetchGuard';
+import { userDataSync } from '../services/userDataSync';
 
 interface AuthContextType {
   user: User | null;
@@ -124,27 +123,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     socketService.disconnect();
   };
 
-  // Guarded and debounced fetch for user data
-  const debouncedFetchUser = useRef(
-    createDebouncedFetch(
-      guardFetch(
-        'refreshUser',
-        async () => {
-          const userData = await usersService.getMe();
-          return userData;
-        }
-      ),
-      3000 // 3 second debounce
-    )
-  ).current;
-
-  // Immediate refresh (for critical cases like initial auth)
+  // Immediate refresh (ONLY for critical initial auth - bypasses socket check)
   const refreshUserImmediate = async () => {
     try {
+      // Direct API call for initial auth only (bypasses UserDataSync socket check)
       const userData = await usersService.getMe();
       setUser(userData);
       setAuthError(null);
       setIsAuthReady(true);
+      // Update UserDataSync
+      userDataSync.updateUserFromSocket(userData);
     } catch (error: any) {
       console.error('[AUTH] Refresh user error:', error);
       // Don't logout immediately - let the interceptor handle 401
@@ -159,24 +147,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Debounced refresh (for non-critical updates, socket-first)
+  // Refresh user (uses UserDataSync - socket-first, HTTP fallback only)
   const refreshUser = async () => {
-    try {
-      const userData = await debouncedFetchUser();
-      setUser(userData);
-      setAuthError(null);
-      setIsAuthReady(true);
-    } catch (error: any) {
-      console.error('[AUTH] Refresh user error:', error);
-      // Don't logout on debounced refresh failures - preserve UI state
-      // Only handle 401 for auth state
-      if (error?.response?.status === 401) {
-        setAuthError('Session expired');
-        setIsAuthReady(false);
-      }
-      // For other errors, preserve current user state (socket updates are primary)
-    }
+    // Use UserDataSync which enforces socket-first rule
+    await userDataSync.manualRefresh('user');
+    // UserDataSync will update via subscription
   };
+
+  // Subscribe to UserDataSync for user updates
+  useEffect(() => {
+    const unsubscribe = userDataSync.subscribe('user', (userData: User | null) => {
+      if (userData) {
+        console.log('[AUTH] User updated from UserDataSync');
+        setUser(userData);
+        setAuthError(null);
+        setIsAuthReady(true);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
