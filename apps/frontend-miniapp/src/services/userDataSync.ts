@@ -119,48 +119,23 @@ class UserDataSyncController {
       }
     });
 
-    // Listen for bet:placed events - update round stats immediately
+    // Listen for bet:placed events - update user bets immediately
     // PERSISTENT: Never unsubscribe - lives for app lifetime
+    // CONTRACT: { roundId, blockNumber, amount, userId, createdAt }
     socketService.onBetPlaced((data: {
       roundId: string;
       blockNumber: number;
       amount: number;
-      totalPool: number;
-      winnerPool: number;
-      adminFee: number;
-      blockStats: Array<{ blockNumber: number; totalBets: number; totalAmount: number }>;
+      userId: string;
+      createdAt: string;
     }) => {
       console.log('📡 [UserDataSync] Received bet:placed socket event', data);
       
-      // ALWAYS update round stats - do NOT gate on activeRound
-      // Stats can arrive before activeRound is set
-      console.log('📡 [UserDataSync] Updating roundStats from bet:placed event');
-      const statsMap = new Map<number, { buyers: number; totalKyat: number }>();
-      data.blockStats.forEach((stat) => {
-        statsMap.set(stat.blockNumber, {
-          buyers: stat.totalBets || 0,
-          totalKyat: stat.totalAmount || 0,
-        });
-      });
-      this.updateRoundStatsFromSocket(data.roundId, statsMap);
-      
-      // Update active round pool if it's the current round (passive reconciliation)
-      const currentRound = this.state.activeRound;
-      if (currentRound?.id === data.roundId) {
-        const updatedRound = {
-          ...currentRound,
-          totalPool: data.totalPool,
-          winnerPool: data.winnerPool,
-          adminFee: data.adminFee,
-        };
-        this.updateState('activeRound', updatedRound);
-      }
-
       // Update user bets array if this bet is for the current user
-      // Note: bet:placed is broadcast, so we need to check if it matches current user
+      // Note: bet:placed is broadcast, so we check if it matches current user
       // We'll add the bet optimistically, and user:bets:updated will sync the full list
       const currentUser = this.state.user;
-      if (currentUser && currentUser.id) {
+      if (currentUser && currentUser.id && currentUser.id === data.userId) {
         // Create a temporary bet object from the event data
         // The full bet object will arrive via user:bets:updated, but we update optimistically
         const newBet: Bet = {
@@ -171,10 +146,11 @@ class UserDataSyncController {
           amount: data.amount,
           payout: null,
           isWinner: false,
-          createdAt: new Date().toISOString(),
+          createdAt: data.createdAt,
         };
 
         // Check if this bet already exists in our array (avoid duplicates)
+        // RULE: bets can be null (never loaded) or array (socket source of truth)
         const existingBets = this.state.bets || [];
         const betExists = existingBets.some(
           bet => bet.lotteryRoundId === data.roundId && 
