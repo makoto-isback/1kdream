@@ -144,6 +144,40 @@ class UserDataSyncController {
         };
         this.updateState('activeRound', updatedRound);
       }
+
+      // Update user bets array if this bet is for the current user
+      // Note: bet:placed is broadcast, so we need to check if it matches current user
+      // We'll add the bet optimistically, and user:bets:updated will sync the full list
+      const currentUser = this.state.user;
+      if (currentUser && currentUser.id) {
+        // Create a temporary bet object from the event data
+        // The full bet object will arrive via user:bets:updated, but we update optimistically
+        const newBet: Bet = {
+          id: `temp-${Date.now()}`, // Temporary ID, will be replaced by real bet from user:bets:updated
+          userId: currentUser.id,
+          lotteryRoundId: data.roundId,
+          blockNumber: data.blockNumber,
+          amount: data.amount,
+          payout: null,
+          isWinner: false,
+          createdAt: new Date().toISOString(),
+        };
+
+        // Check if this bet already exists in our array (avoid duplicates)
+        const existingBets = this.state.bets || [];
+        const betExists = existingBets.some(
+          bet => bet.lotteryRoundId === data.roundId && 
+                 bet.blockNumber === data.blockNumber &&
+                 Math.abs(bet.amount - data.amount) < 0.01 // Amount match (account for decimal precision)
+        );
+
+        if (!betExists) {
+          console.log('📡 [UserDataSync] Added bet to user bets from socket', { roundId: data.roundId, blockNumber: data.blockNumber, amount: data.amount });
+          // Append new bet to existing bets array
+          const updatedBets = [...existingBets, newBet];
+          this.updateState('bets', updatedBets);
+        }
+      }
     });
 
     // Listen for round:stats:updated events - update block stats
