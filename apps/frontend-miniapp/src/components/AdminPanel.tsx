@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { userDataSync } from '../services/userDataSync';
 import api from '../services/api';
 import './AdminPanel.css';
 
@@ -23,7 +23,9 @@ interface Withdrawal {
 }
 
 export default function AdminPanel() {
-  const { user } = useAuth();
+  // Socket-only user check - NO HTTP
+  const user = userDataSync.getData('user');
+  
   const [userId, setUserId] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'credit' | 'debit'>('credit');
@@ -73,7 +75,7 @@ export default function AdminPanel() {
     username: user?.username
   });
 
-  // Only show if user is admin (AFTER all hooks)
+  // Only show if user is admin (AFTER all hooks) - socket-only check
   if (!user?.isAdmin) {
     console.log('[AdminPanel] Not showing - user is not admin');
     return null;

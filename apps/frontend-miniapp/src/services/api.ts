@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { socketService } from './socket';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -8,6 +9,10 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// User-scoped endpoints that require socket authentication
+const USER_SCOPED_ENDPOINTS = ['/users/me', '/bets/my'];
+const NO_RETRY_ENDPOINTS = ['/users/me', '/bets/my'];
 
 // Retry configuration for 429 errors
 interface RetryConfig extends InternalAxiosRequestConfig {
@@ -71,6 +76,18 @@ async function retryRequest(
 
 // Add token to requests
 api.interceptors.request.use((config) => {
+  // 🔴 HARD BLOCK: User-scoped endpoints require socket authentication
+  // This must run BEFORE retry logic and rate limiter
+  if (config.url) {
+    const isUserScoped = USER_SCOPED_ENDPOINTS.some(endpoint => config.url?.includes(endpoint));
+      if (isUserScoped) {
+      if (!socketService.isSocketAuthenticated()) {
+        console.warn(`[API BLOCKED] Socket not authenticated: ${config.url}`);
+        return Promise.reject(new Error('SOCKET_NOT_READY'));
+      }
+    }
+  }
+
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -84,7 +101,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    // Handle 429 with retry logic
+    // 🔥 Disable retries for user-scoped endpoints (prevents retry storms)
+    const config = error.config;
+    if (config && config.url) {
+      const isNoRetry = NO_RETRY_ENDPOINTS.some(endpoint => config.url?.includes(endpoint));
+      if (isNoRetry) {
+        console.warn(`[API] Retry disabled for user-scoped endpoint: ${config.url}`);
+        return Promise.reject(error);
+      }
+    }
+
+    // Handle 429 with retry logic (only for non-user-scoped endpoints)
     if (error.response?.status === 429) {
       try {
         return await retryRequest(error);

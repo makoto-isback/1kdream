@@ -124,7 +124,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Immediate refresh (ONLY for critical initial auth - bypasses socket check)
+  // BUT: Only allowed if socket is authenticated OR UserDataSync is empty
   const refreshUserImmediate = async () => {
+    // Check if socket is authenticated OR UserDataSync has no user data
+    const socketAuth = socketService.isSocketAuthenticated();
+    const cachedUser = userDataSync.getData('user');
+    
+    // Only allow HTTP fetch if:
+    // 1. Socket is authenticated (safe to fetch), OR
+    // 2. UserDataSync is empty (need initial data)
+    if (!socketAuth && cachedUser) {
+      console.log('[AUTH] Skipping HTTP fetch - socket not authenticated and UserDataSync has cached user');
+      // Use cached user from UserDataSync
+      setUser(cachedUser);
+      setAuthError(null);
+      setIsAuthReady(true);
+      return;
+    }
+
     try {
       // Direct API call for initial auth only (bypasses UserDataSync socket check)
       const userData = await usersService.getMe();

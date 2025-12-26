@@ -341,6 +341,13 @@ class SocketService {
   }
 
   /**
+   * Check if socket is authenticated
+   */
+  isSocketAuthenticated(): boolean {
+    return this.isAuthenticated && this.socket?.connected || false;
+  }
+
+  /**
    * Subscribe to usdt_deposit_confirmed events
    */
   onUsdtDepositConfirmed(callback: (data: UsdtDepositConfirmedEvent) => void): () => void {
